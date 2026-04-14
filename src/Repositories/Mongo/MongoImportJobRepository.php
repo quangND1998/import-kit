@@ -1,0 +1,141 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Vendor\ImportKit\Repositories\Mongo;
+
+use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\DB;
+use Vendor\ImportKit\Contracts\ImportJobRepositoryInterface;
+use Vendor\ImportKit\DTO\ImportJobData;
+use Vendor\ImportKit\DTO\ImportJobErrorData;
+use Vendor\ImportKit\DTO\ImportJobResultRowData;
+
+final class MongoImportJobRepository implements ImportJobRepositoryInterface
+{
+    public function create(ImportJobData $job): ImportJobData
+    {
+        $this->query()->insert([
+            '_id' => $job->id,
+            'kind' => $job->kind,
+            'session_id' => $job->sessionId,
+            'status' => $job->status,
+            'submitted_by' => $job->submittedBy,
+            'tenant_id' => $job->tenantId,
+            'workspace_id' => $job->workspaceId,
+            'total_rows' => $job->totalRows,
+            'processed_rows' => $job->processedRows,
+            'ok_rows' => $job->okRows,
+            'error_rows' => $job->errorRows,
+            'skipped_blank_rows' => $job->skippedBlankRows,
+            'summary' => $job->summary,
+            'started_at' => $job->startedAt?->toDateTimeString(),
+            'finished_at' => $job->finishedAt?->toDateTimeString(),
+            'created_at' => now()->toDateTimeString(),
+            'updated_at' => now()->toDateTimeString(),
+        ]);
+
+        return $job;
+    }
+
+    public function find(string $id): ?ImportJobData
+    {
+        $record = (array) $this->query()->where('_id', $id)->first();
+        if ($record === []) {
+            return null;
+        }
+
+        return new ImportJobData(
+            id: (string) ($record['_id'] ?? $id),
+            kind: (string) ($record['kind'] ?? ''),
+            sessionId: (string) ($record['session_id'] ?? ''),
+            status: (string) ($record['status'] ?? 'pending'),
+            submittedBy: isset($record['submitted_by']) ? (int) $record['submitted_by'] : null,
+            tenantId: isset($record['tenant_id']) ? (int) $record['tenant_id'] : null,
+            workspaceId: isset($record['workspace_id']) ? (int) $record['workspace_id'] : null,
+            totalRows: (int) ($record['total_rows'] ?? 0),
+            processedRows: (int) ($record['processed_rows'] ?? 0),
+            okRows: (int) ($record['ok_rows'] ?? 0),
+            errorRows: (int) ($record['error_rows'] ?? 0),
+            skippedBlankRows: (int) ($record['skipped_blank_rows'] ?? 0),
+            summary: (array) ($record['summary'] ?? []),
+            startedAt: isset($record['started_at']) && $record['started_at'] ? CarbonImmutable::parse((string) $record['started_at']) : null,
+            finishedAt: isset($record['finished_at']) && $record['finished_at'] ? CarbonImmutable::parse((string) $record['finished_at']) : null
+        );
+    }
+
+    public function update(string $id, array $payload): void
+    {
+        $payload['updated_at'] = now()->toDateTimeString();
+        $this->query()->where('_id', $id)->update($payload);
+    }
+
+    public function updateProgress(string $id, array $progress): void
+    {
+        $this->update($id, $progress);
+    }
+
+    public function appendRows(string $id, array $rows): void
+    {
+        if ($rows === []) {
+            return;
+        }
+
+        $now = now()->toDateTimeString();
+        $payload = array_map(
+            static fn (ImportJobResultRowData $row): array => [
+                'job_id' => $id,
+                'line' => $row->line,
+                'status' => $row->status,
+                'payload' => $row->payload,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ],
+            $rows
+        );
+
+        $this->resultRowsQuery()->insert($payload);
+    }
+
+    public function appendErrors(string $id, array $errors): void
+    {
+        if ($errors === []) {
+            return;
+        }
+
+        $now = now()->toDateTimeString();
+        $payload = array_map(
+            static fn (ImportJobErrorData $error): array => [
+                'job_id' => $id,
+                'line' => $error->line,
+                'field' => $error->field,
+                'code' => $error->code,
+                'message' => $error->message,
+                'payload' => $error->payload,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ],
+            $errors
+        );
+
+        $this->errorsQuery()->insert($payload);
+    }
+
+    private function query()
+    {
+        return DB::connection((string) config('import.database.mongo.connection', 'mongodb'))
+            ->table((string) config('import.database.mongo.jobs_collection', 'import_jobs'));
+    }
+
+    private function resultRowsQuery()
+    {
+        return DB::connection((string) config('import.database.mongo.connection', 'mongodb'))
+            ->table((string) config('import.database.mongo.job_result_rows_collection', 'import_job_result_rows'));
+    }
+
+    private function errorsQuery()
+    {
+        return DB::connection((string) config('import.database.mongo.connection', 'mongodb'))
+            ->table((string) config('import.database.mongo.job_errors_collection', 'import_job_errors'));
+    }
+}

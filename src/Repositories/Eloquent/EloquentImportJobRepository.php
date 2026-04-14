@@ -1,0 +1,118 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Vendor\ImportKit\Repositories\Eloquent;
+
+use Carbon\CarbonImmutable;
+use Vendor\ImportKit\Contracts\ImportJobRepositoryInterface;
+use Vendor\ImportKit\DTO\ImportJobData;
+use Vendor\ImportKit\DTO\ImportJobErrorData;
+use Vendor\ImportKit\DTO\ImportJobResultRowData;
+use Vendor\ImportKit\Models\ImportJob;
+use Vendor\ImportKit\Models\ImportJobError;
+use Vendor\ImportKit\Models\ImportJobResultRow;
+
+final class EloquentImportJobRepository implements ImportJobRepositoryInterface
+{
+    public function create(ImportJobData $job): ImportJobData
+    {
+        ImportJob::query()->create([
+            'id' => $job->id,
+            'kind' => $job->kind,
+            'session_id' => $job->sessionId,
+            'status' => $job->status,
+            'submitted_by' => $job->submittedBy,
+            'tenant_id' => $job->tenantId,
+            'workspace_id' => $job->workspaceId,
+            'total_rows' => $job->totalRows,
+            'processed_rows' => $job->processedRows,
+            'ok_rows' => $job->okRows,
+            'error_rows' => $job->errorRows,
+            'skipped_blank_rows' => $job->skippedBlankRows,
+            'summary' => $job->summary,
+            'started_at' => $job->startedAt,
+            'finished_at' => $job->finishedAt,
+        ]);
+
+        return $job;
+    }
+
+    public function find(string $id): ?ImportJobData
+    {
+        $record = ImportJob::query()->find($id);
+        if (!$record instanceof ImportJob) {
+            return null;
+        }
+
+        return new ImportJobData(
+            id: (string) $record->id,
+            kind: (string) $record->kind,
+            sessionId: (string) $record->session_id,
+            status: (string) $record->status,
+            submittedBy: $record->submitted_by !== null ? (int) $record->submitted_by : null,
+            tenantId: $record->tenant_id !== null ? (int) $record->tenant_id : null,
+            workspaceId: $record->workspace_id !== null ? (int) $record->workspace_id : null,
+            totalRows: (int) $record->total_rows,
+            processedRows: (int) $record->processed_rows,
+            okRows: (int) $record->ok_rows,
+            errorRows: (int) $record->error_rows,
+            skippedBlankRows: (int) $record->skipped_blank_rows,
+            summary: (array) ($record->summary ?? []),
+            startedAt: $record->started_at ? CarbonImmutable::parse($record->started_at) : null,
+            finishedAt: $record->finished_at ? CarbonImmutable::parse($record->finished_at) : null
+        );
+    }
+
+    public function update(string $id, array $payload): void
+    {
+        ImportJob::query()->whereKey($id)->update($payload);
+    }
+
+    public function updateProgress(string $id, array $progress): void
+    {
+        ImportJob::query()->whereKey($id)->update($progress);
+    }
+
+    public function appendRows(string $id, array $rows): void
+    {
+        if ($rows === []) {
+            return;
+        }
+
+        $now = now();
+        ImportJobResultRow::query()->insert(array_map(
+            static fn (ImportJobResultRowData $row): array => [
+                'job_id' => $id,
+                'line' => $row->line,
+                'status' => $row->status,
+                'payload' => $row->payload,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ],
+            $rows
+        ));
+    }
+
+    public function appendErrors(string $id, array $errors): void
+    {
+        if ($errors === []) {
+            return;
+        }
+
+        $now = now();
+        ImportJobError::query()->insert(array_map(
+            static fn (ImportJobErrorData $error): array => [
+                'job_id' => $id,
+                'line' => $error->line,
+                'field' => $error->field,
+                'code' => $error->code,
+                'message' => $error->message,
+                'payload' => $error->payload,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ],
+            $errors
+        ));
+    }
+}
