@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Vendor\ImportKit\Repositories\Eloquent;
 
 use Carbon\CarbonImmutable;
+use JsonException;
 use Vendor\ImportKit\Contracts\PreviewSessionStoreInterface;
 use Vendor\ImportKit\DTO\PreviewSessionData;
 use Vendor\ImportKit\Models\ImportPreviewSession;
@@ -59,13 +60,13 @@ final class EloquentPreviewSessionRepository implements PreviewSessionStoreInter
         ImportPreviewSnapshotRow::query()->where('session_id', $id)->delete();
 
         if ($rows !== []) {
-            $now = now();
+            $now = CarbonImmutable::now();
             ImportPreviewSnapshotRow::query()->insert(array_map(
-                static fn (array $row): array => [
+                fn (array $row): array => [
                     'session_id' => $id,
                     'line' => (int) ($row['line'] ?? 0),
                     'status' => (string) ($row['status'] ?? 'unknown'),
-                    'payload' => $row,
+                    'payload' => $this->encodeJson($row),
                     'created_at' => $now,
                     'updated_at' => $now,
                 ],
@@ -74,12 +75,12 @@ final class EloquentPreviewSessionRepository implements PreviewSessionStoreInter
         }
 
         ImportPreviewSession::query()->whereKey($id)->update([
-            'context' => [
+            'context' => $this->encodeJson([
                 'preview_snapshot' => [
                     'stored_rows' => count($rows),
                     'column_labels' => $columnLabels,
                 ],
-            ],
+            ]),
         ]);
     }
 
@@ -98,12 +99,25 @@ final class EloquentPreviewSessionRepository implements PreviewSessionStoreInter
         $storedRows = ImportPreviewSnapshotRow::query()
             ->where('session_id', $id)
             ->orderBy('line')
-            ->pluck('payload')
+            ->get()
+            ->map(static fn (ImportPreviewSnapshotRow $item): array => (array) $item->payload)
             ->all();
 
         return [
             'rows' => $storedRows !== [] ? $storedRows : (array) ($snapshot['rows'] ?? []),
             'column_labels' => (array) ($snapshot['column_labels'] ?? []),
         ];
+    }
+
+    /**
+     * @param array<mixed> $value
+     */
+    private function encodeJson(array $value): string
+    {
+        try {
+            return (string) json_encode($value, JSON_THROW_ON_ERROR);
+        } catch (JsonException) {
+            return '[]';
+        }
     }
 }

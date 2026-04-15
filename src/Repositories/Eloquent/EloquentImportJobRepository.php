@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Vendor\ImportKit\Repositories\Eloquent;
 
 use Carbon\CarbonImmutable;
+use JsonException;
 use Vendor\ImportKit\Contracts\ImportJobRepositoryInterface;
 use Vendor\ImportKit\DTO\ImportJobData;
 use Vendor\ImportKit\DTO\ImportJobErrorData;
@@ -66,6 +67,10 @@ final class EloquentImportJobRepository implements ImportJobRepositoryInterface
 
     public function update(string $id, array $payload): void
     {
+        if (isset($payload['summary']) && is_array($payload['summary'])) {
+            $payload['summary'] = $this->encodeJson($payload['summary']);
+        }
+
         ImportJob::query()->whereKey($id)->update($payload);
     }
 
@@ -80,13 +85,13 @@ final class EloquentImportJobRepository implements ImportJobRepositoryInterface
             return;
         }
 
-        $now = now();
+        $now = CarbonImmutable::now();
         ImportJobResultRow::query()->insert(array_map(
-            static fn (ImportJobResultRowData $row): array => [
+            fn (ImportJobResultRowData $row): array => [
                 'job_id' => $id,
                 'line' => $row->line,
                 'status' => $row->status,
-                'payload' => $row->payload,
+                'payload' => $this->encodeJson($row->payload),
                 'created_at' => $now,
                 'updated_at' => $now,
             ],
@@ -100,19 +105,31 @@ final class EloquentImportJobRepository implements ImportJobRepositoryInterface
             return;
         }
 
-        $now = now();
+        $now = CarbonImmutable::now();
         ImportJobError::query()->insert(array_map(
-            static fn (ImportJobErrorData $error): array => [
+            fn (ImportJobErrorData $error): array => [
                 'job_id' => $id,
                 'line' => $error->line,
                 'field' => $error->field,
                 'code' => $error->code,
                 'message' => $error->message,
-                'payload' => $error->payload,
+                'payload' => $this->encodeJson($error->payload),
                 'created_at' => $now,
                 'updated_at' => $now,
             ],
             $errors
         ));
+    }
+
+    /**
+     * @param array<mixed> $value
+     */
+    private function encodeJson(array $value): string
+    {
+        try {
+            return (string) json_encode($value, JSON_THROW_ON_ERROR);
+        } catch (JsonException) {
+            return '[]';
+        }
     }
 }
