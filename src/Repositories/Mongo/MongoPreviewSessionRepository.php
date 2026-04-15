@@ -149,7 +149,7 @@ final class MongoPreviewSessionRepository implements PreviewSessionStoreInterfac
                 'next_cursor' => $nextCursor,
             ],
             'filters' => [
-                'status' => $status,
+                'status' => $status ?? 'all',
             ],
         ];
     }

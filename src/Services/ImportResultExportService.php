@@ -16,6 +16,7 @@ final class ImportResultExportService
 
     public function exportCsvByStatus(string $jobId, ?string $status = null): string
     {
+        $resolvedStatus = $this->normalizeStatus($status);
         $cursor = 0;
         $pageSize = 500;
         $lines = [];
@@ -24,7 +25,7 @@ final class ImportResultExportService
         while (true) {
             $chunk = $this->jobs->getResultRows(
                 $jobId,
-                $status,
+                $resolvedStatus,
                 new RowWindow($cursor, $pageSize)
             );
 
@@ -67,6 +68,20 @@ final class ImportResultExportService
         }
 
         return implode("\n", $lines) . "\n";
+    }
+
+    private function normalizeStatus(?string $status): ?string
+    {
+        if ($status === null) {
+            return null;
+        }
+
+        $normalized = strtolower(trim($status));
+        if ($normalized === '' || $normalized === 'all') {
+            return null;
+        }
+
+        return $normalized;
     }
 
     /**

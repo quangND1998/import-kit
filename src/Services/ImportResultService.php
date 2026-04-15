@@ -21,23 +21,37 @@ final class ImportResultService
      *   rows: array<int, array<string, mixed>>,
      *   column_labels: array<string, string>,
      *   pagination: array{page: int, per_page: int, filtered_total: int, next_cursor: ?string},
-     *   filters: array{status: ?string}
+     *   filters: array{status: string}
      * }|null
      */
     public function previewRows(string $sessionId, ?string $status = null, ?RowWindow $rowWindow = null): ?array
     {
-        return $this->sessions->getPreviewSnapshotRows($sessionId, $status, $rowWindow);
+        return $this->sessions->getPreviewSnapshotRows($sessionId, $this->normalizeStatus($status), $rowWindow);
     }
 
     /**
      * @return array{
      *   rows: array<int, array<string, mixed>>,
      *   pagination: array{page: int, per_page: int, filtered_total: int, next_cursor: ?string},
-     *   filters: array{status: ?string}
+     *   filters: array{status: string}
      * }
      */
     public function resultRows(string $jobId, ?string $status = null, ?RowWindow $rowWindow = null): array
     {
-        return $this->jobs->getResultRows($jobId, $status, $rowWindow);
+        return $this->jobs->getResultRows($jobId, $this->normalizeStatus($status), $rowWindow);
+    }
+
+    private function normalizeStatus(?string $status): ?string
+    {
+        if ($status === null) {
+            return null;
+        }
+
+        $normalized = strtolower(trim($status));
+        if ($normalized === '' || $normalized === 'all') {
+            return null;
+        }
+
+        return $normalized;
     }
 }

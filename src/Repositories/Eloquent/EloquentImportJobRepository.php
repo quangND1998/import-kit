@@ -155,7 +155,7 @@ final class EloquentImportJobRepository implements ImportJobRepositoryInterface
                 'next_cursor' => $nextCursor,
             ],
             'filters' => [
-                'status' => $status,
+                'status' => $status ?? 'all',
             ],
         ];
     }

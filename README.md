@@ -144,6 +144,9 @@ $service = app(ImportResultService::class);
 // Preview snapshot rows filtered by status
 $preview = $service->previewRows($sessionId, 'error', RowWindow::fromPage(1, 20));
 
+// No status filter (equivalent): null, '', or 'all'
+$previewAll = $service->previewRows($sessionId, 'all', RowWindow::fromPage(1, 20));
+
 // Commit result rows filtered by status
 $result = $service->resultRows($jobId, 'ok', RowWindow::fromPage(1, 50));
 ```
@@ -163,6 +166,7 @@ use Vendor\ImportKit\Services\ImportResultExportService;
 
 $exporter = app(ImportResultExportService::class);
 $csv = $exporter->exportCsvByStatus($jobId, 'error');
+$csvAll = $exporter->exportCsvByStatus($jobId, 'all');
 ```
 
 ## Notes

@@ -149,7 +149,7 @@ final class EloquentPreviewSessionRepository implements PreviewSessionStoreInter
                 'next_cursor' => $nextCursor,
             ],
             'filters' => [
-                'status' => $status,
+                'status' => $status ?? 'all',
             ],
         ];
     }
