@@ -131,6 +131,40 @@ Preview response pagination format:
 }
 ```
 
+## Filter preview/result by status
+
+Use `ImportResultService`:
+
+```php
+use Vendor\ImportKit\Services\ImportResultService;
+use Vendor\ImportKit\Support\RowWindow;
+
+$service = app(ImportResultService::class);
+
+// Preview snapshot rows filtered by status
+$preview = $service->previewRows($sessionId, 'error', RowWindow::fromPage(1, 20));
+
+// Commit result rows filtered by status
+$result = $service->resultRows($jobId, 'ok', RowWindow::fromPage(1, 50));
+```
+
+Both responses include:
+
+- `rows`
+- `pagination` (`page`, `per_page`, `filtered_total`, `next_cursor`)
+- `filters` (`status`)
+
+## Export result by status (CSV)
+
+Use `ImportResultExportService`:
+
+```php
+use Vendor\ImportKit\Services\ImportResultExportService;
+
+$exporter = app(ImportResultExportService::class);
+$csv = $exporter->exportCsvByStatus($jobId, 'error');
+```
+
 ## Notes
 
 - `workspace_id` is nullable in preview session/job records.

@@ -10,6 +10,7 @@ use Vendor\ImportKit\Contracts\PreviewSessionStoreInterface;
 use Vendor\ImportKit\DTO\PreviewSessionData;
 use Vendor\ImportKit\Models\ImportPreviewSession;
 use Vendor\ImportKit\Models\ImportPreviewSnapshotRow;
+use Vendor\ImportKit\Support\RowWindow;
 
 final class EloquentPreviewSessionRepository implements PreviewSessionStoreInterface
 {
@@ -106,6 +107,50 @@ final class EloquentPreviewSessionRepository implements PreviewSessionStoreInter
         return [
             'rows' => $storedRows !== [] ? $storedRows : (array) ($snapshot['rows'] ?? []),
             'column_labels' => (array) ($snapshot['column_labels'] ?? []),
+        ];
+    }
+
+    public function getPreviewSnapshotRows(string $id, ?string $status = null, ?RowWindow $rowWindow = null): ?array
+    {
+        $snapshot = $this->getPreviewSnapshot($id);
+        if (!is_array($snapshot)) {
+            return null;
+        }
+
+        $window = $rowWindow ?? new RowWindow(0, (int) config('import.preview.default_per_page', 20));
+
+        $query = ImportPreviewSnapshotRow::query()->where('session_id', $id);
+        if (is_string($status) && $status !== '') {
+            $query->where('status', $status);
+        }
+
+        $filteredTotal = (int) $query->count();
+        $records = $query
+            ->orderBy('line')
+            ->offset($window->offset)
+            ->limit($window->limit)
+            ->get();
+
+        $rows = $records
+            ->map(static fn (ImportPreviewSnapshotRow $item): array => (array) ($item->payload ?? []))
+            ->all();
+
+        $nextCursor = ($window->offset + count($rows)) < $filteredTotal
+            ? (string) ($window->offset + $window->limit)
+            : null;
+
+        return [
+            'rows' => $rows,
+            'column_labels' => (array) ($snapshot['column_labels'] ?? []),
+            'pagination' => [
+                'page' => $window->page(),
+                'per_page' => $window->limit,
+                'filtered_total' => $filteredTotal,
+                'next_cursor' => $nextCursor,
+            ],
+            'filters' => [
+                'status' => $status,
+            ],
         ];
     }
 

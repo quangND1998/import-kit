@@ -7,6 +7,7 @@ namespace Vendor\ImportKit\Contracts;
 use Vendor\ImportKit\DTO\ImportJobErrorData;
 use Vendor\ImportKit\DTO\ImportJobData;
 use Vendor\ImportKit\DTO\ImportJobResultRowData;
+use Vendor\ImportKit\Support\RowWindow;
 
 interface ImportJobRepositoryInterface
 {
@@ -33,4 +34,13 @@ interface ImportJobRepositoryInterface
      * @param array<int, ImportJobErrorData> $errors
      */
     public function appendErrors(string $id, array $errors): void;
+
+    /**
+     * @return array{
+     *   rows: array<int, array<string, mixed>>,
+     *   pagination: array{page: int, per_page: int, filtered_total: int, next_cursor: ?string},
+     *   filters: array{status: ?string}
+     * }
+     */
+    public function getResultRows(string $id, ?string $status = null, ?RowWindow $rowWindow = null): array;
 }

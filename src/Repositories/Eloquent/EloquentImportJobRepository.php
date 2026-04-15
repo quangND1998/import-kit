@@ -13,6 +13,7 @@ use Vendor\ImportKit\DTO\ImportJobResultRowData;
 use Vendor\ImportKit\Models\ImportJob;
 use Vendor\ImportKit\Models\ImportJobError;
 use Vendor\ImportKit\Models\ImportJobResultRow;
+use Vendor\ImportKit\Support\RowWindow;
 
 final class EloquentImportJobRepository implements ImportJobRepositoryInterface
 {
@@ -119,6 +120,44 @@ final class EloquentImportJobRepository implements ImportJobRepositoryInterface
             ],
             $errors
         ));
+    }
+
+    public function getResultRows(string $id, ?string $status = null, ?RowWindow $rowWindow = null): array
+    {
+        $window = $rowWindow ?? new RowWindow(0, (int) config('import.preview.default_per_page', 20));
+
+        $query = ImportJobResultRow::query()->where('job_id', $id);
+        if (is_string($status) && $status !== '') {
+            $query->where('status', $status);
+        }
+
+        $filteredTotal = (int) $query->count();
+        $records = $query
+            ->orderBy('line')
+            ->offset($window->offset)
+            ->limit($window->limit)
+            ->get();
+
+        $rows = $records
+            ->map(static fn (ImportJobResultRow $row): array => (array) ($row->payload ?? []))
+            ->all();
+
+        $nextCursor = ($window->offset + count($rows)) < $filteredTotal
+            ? (string) ($window->offset + $window->limit)
+            : null;
+
+        return [
+            'rows' => $rows,
+            'pagination' => [
+                'page' => $window->page(),
+                'per_page' => $window->limit,
+                'filtered_total' => $filteredTotal,
+                'next_cursor' => $nextCursor,
+            ],
+            'filters' => [
+                'status' => $status,
+            ],
+        ];
     }
 
     /**

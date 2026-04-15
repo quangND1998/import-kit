@@ -10,6 +10,7 @@ use Vendor\ImportKit\Contracts\ImportJobRepositoryInterface;
 use Vendor\ImportKit\DTO\ImportJobData;
 use Vendor\ImportKit\DTO\ImportJobErrorData;
 use Vendor\ImportKit\DTO\ImportJobResultRowData;
+use Vendor\ImportKit\Support\RowWindow;
 
 final class MongoImportJobRepository implements ImportJobRepositoryInterface
 {
@@ -119,6 +120,47 @@ final class MongoImportJobRepository implements ImportJobRepositoryInterface
         );
 
         $this->errorsQuery()->insert($payload);
+    }
+
+    public function getResultRows(string $id, ?string $status = null, ?RowWindow $rowWindow = null): array
+    {
+        $window = $rowWindow ?? new RowWindow(0, (int) config('import.preview.default_per_page', 20));
+
+        $query = $this->resultRowsQuery()->where('job_id', $id);
+        if (is_string($status) && $status !== '') {
+            $query->where('status', $status);
+        }
+
+        $filteredTotal = (int) $query->count();
+
+        $records = (array) $query
+            ->orderBy('line')
+            ->offset($window->offset)
+            ->limit($window->limit)
+            ->get()
+            ->all();
+
+        $rows = array_map(
+            static fn (array $item): array => (array) ($item['payload'] ?? []),
+            $records
+        );
+
+        $nextCursor = ($window->offset + count($rows)) < $filteredTotal
+            ? (string) ($window->offset + $window->limit)
+            : null;
+
+        return [
+            'rows' => $rows,
+            'pagination' => [
+                'page' => $window->page(),
+                'per_page' => $window->limit,
+                'filtered_total' => $filteredTotal,
+                'next_cursor' => $nextCursor,
+            ],
+            'filters' => [
+                'status' => $status,
+            ],
+        ];
     }
 
     private function query()

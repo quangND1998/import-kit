@@ -8,6 +8,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Vendor\ImportKit\Contracts\PreviewSessionStoreInterface;
 use Vendor\ImportKit\DTO\PreviewSessionData;
+use Vendor\ImportKit\Support\RowWindow;
 
 final class MongoPreviewSessionRepository implements PreviewSessionStoreInterface
 {
@@ -104,6 +105,52 @@ final class MongoPreviewSessionRepository implements PreviewSessionStoreInterfac
         return [
             'rows' => $storedRows !== [] ? $storedRows : (array) ($snapshot['rows'] ?? []),
             'column_labels' => (array) ($snapshot['column_labels'] ?? []),
+        ];
+    }
+
+    public function getPreviewSnapshotRows(string $id, ?string $status = null, ?RowWindow $rowWindow = null): ?array
+    {
+        $snapshot = $this->getPreviewSnapshot($id);
+        if (!is_array($snapshot)) {
+            return null;
+        }
+
+        $window = $rowWindow ?? new RowWindow(0, (int) config('import.preview.default_per_page', 20));
+
+        $query = $this->snapshotRowsQuery()->where('session_id', $id);
+        if (is_string($status) && $status !== '') {
+            $query->where('status', $status);
+        }
+
+        $filteredTotal = (int) $query->count();
+        $records = (array) $query
+            ->orderBy('line')
+            ->offset($window->offset)
+            ->limit($window->limit)
+            ->get()
+            ->all();
+
+        $rows = array_map(
+            static fn (array $item): array => (array) ($item['payload'] ?? []),
+            $records
+        );
+
+        $nextCursor = ($window->offset + count($rows)) < $filteredTotal
+            ? (string) ($window->offset + $window->limit)
+            : null;
+
+        return [
+            'rows' => $rows,
+            'column_labels' => (array) ($snapshot['column_labels'] ?? []),
+            'pagination' => [
+                'page' => $window->page(),
+                'per_page' => $window->limit,
+                'filtered_total' => $filteredTotal,
+                'next_cursor' => $nextCursor,
+            ],
+            'filters' => [
+                'status' => $status,
+            ],
         ];
     }
 

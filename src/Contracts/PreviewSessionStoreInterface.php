@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Vendor\ImportKit\Contracts;
 
 use Vendor\ImportKit\DTO\PreviewSessionData;
+use Vendor\ImportKit\Support\RowWindow;
 
 interface PreviewSessionStoreInterface
 {
@@ -24,4 +25,14 @@ interface PreviewSessionStoreInterface
      * @return array{rows: array<int, array<string, mixed>>, column_labels: array<string, string>}|null
      */
     public function getPreviewSnapshot(string $id): ?array;
+
+    /**
+     * @return array{
+     *   rows: array<int, array<string, mixed>>,
+     *   column_labels: array<string, string>,
+     *   pagination: array{page: int, per_page: int, filtered_total: int, next_cursor: ?string},
+     *   filters: array{status: ?string}
+     * }|null
+     */
+    public function getPreviewSnapshotRows(string $id, ?string $status = null, ?RowWindow $rowWindow = null): ?array;
 }
