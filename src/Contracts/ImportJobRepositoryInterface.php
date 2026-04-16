@@ -38,6 +38,7 @@ interface ImportJobRepositoryInterface
     /**
      * @return array{
      *   rows: array<int, array<string, mixed>>,
+     *   column_labels: array<string, string>,
      *   pagination: array{page: int, per_page: int, filtered_total: int, next_cursor: ?string},
      *   filters: array{status: ?string}
      * }

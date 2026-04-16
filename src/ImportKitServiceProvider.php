@@ -33,6 +33,7 @@ use Vendor\ImportKit\Services\ImportResultExportService;
 use Vendor\ImportKit\Services\ImportResultService;
 use Vendor\ImportKit\Services\ImportJobStatusService;
 use Vendor\ImportKit\Services\ImportPreviewService;
+use Vendor\ImportKit\Services\ImportResponseFormatter;
 
 final class ImportKitServiceProvider extends ServiceProvider
 {
@@ -63,6 +64,7 @@ final class ImportKitServiceProvider extends ServiceProvider
         $this->app->singleton(ImportPreviewService::class);
         $this->app->singleton(ImportCommitService::class);
         $this->app->singleton(ImportJobStatusService::class);
+        $this->app->singleton(ImportResponseFormatter::class);
         $this->app->singleton(ImportResultService::class);
         $this->app->singleton(ImportResultExportService::class);
 

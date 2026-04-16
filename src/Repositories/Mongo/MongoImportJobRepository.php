@@ -6,6 +6,7 @@ namespace Vendor\ImportKit\Repositories\Mongo;
 
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Config;
 use Vendor\ImportKit\Contracts\ImportJobRepositoryInterface;
 use Vendor\ImportKit\DTO\ImportJobData;
 use Vendor\ImportKit\DTO\ImportJobErrorData;
@@ -124,7 +125,7 @@ final class MongoImportJobRepository implements ImportJobRepositoryInterface
 
     public function getResultRows(string $id, ?string $status = null, ?RowWindow $rowWindow = null): array
     {
-        $window = $rowWindow ?? new RowWindow(0, (int) config('import.preview.default_per_page', 20));
+        $window = $rowWindow ?? new RowWindow(0, (int) Config::get('import.preview.default_per_page', 20));
 
         $query = $this->resultRowsQuery()->where('job_id', $id);
         if (is_string($status) && $status !== '') {
@@ -151,6 +152,7 @@ final class MongoImportJobRepository implements ImportJobRepositoryInterface
 
         return [
             'rows' => $rows,
+            'column_labels' => [],
             'pagination' => [
                 'page' => $window->page(),
                 'per_page' => $window->limit,
@@ -165,19 +167,19 @@ final class MongoImportJobRepository implements ImportJobRepositoryInterface
 
     private function query()
     {
-        return DB::connection((string) config('import.database.mongo.connection', 'mongodb'))
-            ->table((string) config('import.database.mongo.jobs_collection', 'import_jobs'));
+        return DB::connection((string) Config::get('import.database.mongo.connection', 'mongodb'))
+            ->table((string) Config::get('import.database.mongo.jobs_collection', 'import_jobs'));
     }
 
     private function resultRowsQuery()
     {
-        return DB::connection((string) config('import.database.mongo.connection', 'mongodb'))
-            ->table((string) config('import.database.mongo.job_result_rows_collection', 'import_job_result_rows'));
+        return DB::connection((string) Config::get('import.database.mongo.connection', 'mongodb'))
+            ->table((string) Config::get('import.database.mongo.job_result_rows_collection', 'import_job_result_rows'));
     }
 
     private function errorsQuery()
     {
-        return DB::connection((string) config('import.database.mongo.connection', 'mongodb'))
-            ->table((string) config('import.database.mongo.job_errors_collection', 'import_job_errors'));
+        return DB::connection((string) Config::get('import.database.mongo.connection', 'mongodb'))
+            ->table((string) Config::get('import.database.mongo.job_errors_collection', 'import_job_errors'));
     }
 }

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Vendor\ImportKit\Repositories\Eloquent;
 
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\Config;
 use JsonException;
 use Vendor\ImportKit\Contracts\ImportJobRepositoryInterface;
 use Vendor\ImportKit\DTO\ImportJobData;
@@ -124,7 +125,7 @@ final class EloquentImportJobRepository implements ImportJobRepositoryInterface
 
     public function getResultRows(string $id, ?string $status = null, ?RowWindow $rowWindow = null): array
     {
-        $window = $rowWindow ?? new RowWindow(0, (int) config('import.preview.default_per_page', 20));
+        $window = $rowWindow ?? new RowWindow(0, (int) Config::get('import.preview.default_per_page', 20));
 
         $query = ImportJobResultRow::query()->where('job_id', $id);
         if (is_string($status) && $status !== '') {
@@ -148,6 +149,7 @@ final class EloquentImportJobRepository implements ImportJobRepositoryInterface
 
         return [
             'rows' => $rows,
+            'column_labels' => [],
             'pagination' => [
                 'page' => $window->page(),
                 'per_page' => $window->limit,

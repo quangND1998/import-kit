@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Vendor\ImportKit\DTO;
 
+use Vendor\ImportKit\Services\ImportResponseFormatter;
+
 final class PreviewResult
 {
     /**
@@ -30,48 +32,25 @@ final class PreviewResult
     public function toArray(): array
     {
         $rows = array_map(static fn (PreviewRowResult $row) => $row->toArray(), $this->rows);
-        $errorRows = [];
-        foreach ($rows as $row) {
-            if (($row['status'] ?? '') !== 'error') {
-                continue;
-            }
+        $formatter = new ImportResponseFormatter();
 
-            $errorRows[] = [
-                'row' => (int) ($row['row'] ?? $row['line'] ?? 0),
-                'errors' => (array) ($row['errors'] ?? []),
-            ];
-        }
-
-        $page = (int) ($this->pagination['page'] ?? 1);
-        $perPage = max(1, (int) ($this->pagination['per_page'] ?? 20));
-        $totalRows = (int) ($this->summary['total_seen'] ?? 0);
-        $lastPage = (int) ceil($totalRows / $perPage);
-
-        return [
-            'mode' => 'preview',
-            'import_session_id' => $this->sessionId,
-            'validated' => $this->validated,
-            'data_source' => $this->dataSource,
-            'page' => $page,
-            'per_page' => $perPage,
-            'total_rows' => $totalRows,
-            'total_row_ok' => (int) ($this->summary['ok'] ?? 0),
-            'total_row_error' => (int) ($this->summary['error'] ?? 0),
-            'last_page' => max(1, $lastPage),
-            'imported' => (int) ($this->summary['ok'] ?? 0),
-            'skipped' => (int) ($this->summary['skipped_blank'] ?? 0),
-            'rows' => $rows,
-            'errors' => $errorRows,
-            'column_labels' => $this->columnLabels,
-            'meta' => [
+        return $formatter->format(
+            mode: 'preview',
+            id: $this->sessionId,
+            rows: $rows,
+            pagination: [
+                'page' => (int) ($this->pagination['page'] ?? 1),
+                'per_page' => (int) ($this->pagination['per_page'] ?? 20),
+                'filtered_total' => (int) ($this->summary['total_seen'] ?? count($rows)),
+                'next_cursor' => $this->pagination['next_cursor'] ?? null,
+            ],
+            columnLabels: $this->columnLabels,
+            meta: [
                 'validated' => $this->validated,
                 'source' => $this->dataSource,
+                'skipped' => (int) ($this->summary['skipped_blank'] ?? 0),
             ],
-            'session_id' => $this->sessionId,
-            'kind' => $this->kind,
-            'summary' => $this->summary,
-            'pagination' => $this->pagination,
-            'legacy_rows' => $rows,
-        ];
+            filters: ['status' => 'all']
+        );
     }
 }

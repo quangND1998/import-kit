@@ -16,7 +16,8 @@ final class ImportResultService
     public function __construct(
         private readonly ImportJobRepositoryInterface $jobs,
         private readonly PreviewSessionStoreInterface $sessions,
-        private readonly ImportPreviewService $previewService
+        private readonly ImportPreviewService $previewService,
+        private readonly ImportResponseFormatter $responseFormatter
     ) {
     }
 
@@ -75,7 +76,20 @@ final class ImportResultService
             );
         }
 
-        return $this->sessions->getPreviewSnapshotRows($sessionId, $this->normalizeStatus($status), $rowWindow);
+        $result = $this->sessions->getPreviewSnapshotRows($sessionId, $this->normalizeStatus($status), $rowWindow);
+        if ($result === null) {
+            return null;
+        }
+
+        return $this->responseFormatter->format(
+            mode: 'preview',
+            id: $sessionId,
+            rows: (array) ($result['rows'] ?? []),
+            pagination: (array) ($result['pagination'] ?? []),
+            columnLabels: (array) ($result['column_labels'] ?? []),
+            meta: (array) ($result['meta'] ?? []),
+            filters: (array) ($result['filters'] ?? ['status' => 'all'])
+        );
     }
 
     /**
@@ -87,7 +101,19 @@ final class ImportResultService
      */
     public function resultRows(string $jobId, ?string $status = null, ?RowWindow $rowWindow = null): array
     {
-        return $this->jobs->getResultRows($jobId, $this->normalizeStatus($status), $rowWindow);
+        $result = $this->jobs->getResultRows($jobId, $this->normalizeStatus($status), $rowWindow);
+        return $this->responseFormatter->format(
+            mode: 'result',
+            id: $jobId,
+            rows: (array) ($result['rows'] ?? []),
+            pagination: (array) ($result['pagination'] ?? []),
+            columnLabels: (array) ($result['column_labels'] ?? []),
+            meta: [
+                'validated' => true,
+                'source' => 'job_result',
+            ],
+            filters: (array) ($result['filters'] ?? ['status' => 'all'])
+        );
     }
 
     private function normalizeStatus(?string $status): ?string
