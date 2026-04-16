@@ -7,10 +7,14 @@ namespace Vendor\ImportKit;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\ServiceProvider;
 use Vendor\ImportKit\Contracts\FileStoreInterface;
+use Vendor\ImportKit\Contracts\HeaderPolicyResolverInterface;
 use Vendor\ImportKit\Contracts\HeaderLocatorInterface;
 use Vendor\ImportKit\Contracts\HeaderLocatorRegistryInterface;
 use Vendor\ImportKit\Contracts\ImportRegistryInterface;
+use Vendor\ImportKit\Contracts\CustomFieldCatalogInterface;
 use Vendor\ImportKit\Contracts\SourceReaderResolverInterface;
+use Vendor\ImportKit\Infrastructure\CustomField\NullCustomFieldCatalog;
+use Vendor\ImportKit\Infrastructure\Readers\ConfigHeaderPolicyResolver;
 use Vendor\ImportKit\Infrastructure\Readers\DefaultHeaderLocator;
 use Vendor\ImportKit\Infrastructure\Readers\HeaderLocatorRegistry;
 use Vendor\ImportKit\Infrastructure\Readers\SourceReaderResolver;
@@ -49,6 +53,8 @@ final class ImportKitServiceProvider extends ServiceProvider
             return new HeaderLocatorRegistry($defaultLocator);
         });
         $this->app->singleton(SourceReaderResolverInterface::class, SourceReaderResolver::class);
+        $this->app->singleton(HeaderPolicyResolverInterface::class, ConfigHeaderPolicyResolver::class);
+        $this->app->singleton(CustomFieldCatalogInterface::class, NullCustomFieldCatalog::class);
         $this->app->singleton(ImportPipeline::class);
         $this->app->singleton(ColumnLabelService::class);
         $this->app->singleton(ImportRegistryInterface::class, function (): ImportRegistryInterface {

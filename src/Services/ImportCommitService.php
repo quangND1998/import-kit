@@ -7,6 +7,7 @@ namespace Vendor\ImportKit\Services;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use Vendor\ImportKit\Contracts\ImportJobRepositoryInterface;
+use Vendor\ImportKit\DTO\ImportRunContext;
 use Vendor\ImportKit\DTO\ImportJobData;
 use Vendor\ImportKit\Jobs\RunImportJob;
 
@@ -20,18 +21,21 @@ final class ImportCommitService
     public function submit(
         string $kind,
         string $sessionId,
+        ?ImportRunContext $runContext = null,
         ?int $submittedBy = null,
         ?int $tenantId = null,
         ?int $workspaceId = null
     ): ImportJobData {
+        $effectiveTenantId = $runContext?->tenantId ?? $tenantId;
+        $effectiveWorkspaceId = $runContext?->workspaceId ?? $workspaceId;
         $job = new ImportJobData(
             id: (string) Str::uuid(),
             kind: $kind,
             sessionId: $sessionId,
             status: 'pending',
             submittedBy: $submittedBy,
-            tenantId: $tenantId,
-            workspaceId: $workspaceId
+            tenantId: $effectiveTenantId,
+            workspaceId: $effectiveWorkspaceId
         );
 
         $job = $this->jobs->create($job);

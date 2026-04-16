@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Storage;
 use RuntimeException;
 use Vendor\ImportKit\Contracts\SourceReaderInterface;
 use Vendor\ImportKit\DTO\StoredFile;
+use Vendor\ImportKit\DTO\TemplateValidationResult;
 use Vendor\ImportKit\Support\RowWindow;
 
 final class CsvSourceReader implements SourceReaderInterface
@@ -37,6 +38,16 @@ final class CsvSourceReader implements SourceReaderInterface
     public function headers(): array
     {
         return $this->headers;
+    }
+
+    public function metadata(): array
+    {
+        return [];
+    }
+
+    public function templateValidation(): TemplateValidationResult
+    {
+        return TemplateValidationResult::ok();
     }
 
     public function rows(?RowWindow $window = null): iterable

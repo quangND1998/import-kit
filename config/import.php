@@ -111,4 +111,37 @@ return [
         // kind => [column_key => label]
         'default' => [],
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Header Policy Defaults
+    |--------------------------------------------------------------------------
+    |
+    | Default spreadsheet header behavior used as fallback.
+    | Recommended: implement HeaderPolicyAwareImportModuleInterface in each module
+    | to provide per-kind policy from code (or DB-driven rules) instead of config.
+    |
+    | - row: header row index (1-based)
+    | - strict_order: enforce expected labels by fixed column index
+    | - strict_core_columns: [excel_column_index => expected_label]
+    | - required_headers: normalized keys expected in parsed header_map
+    | - custom_field_start_column: first custom field column (1-based)
+    | - custom_field_pattern: regex to extract customFieldId (named group "id")
+    | - normalize_mode: "snake" (default) or "raw"
+    |
+    */
+    'header' => [
+        'default' => [
+            'row' => 1,
+            'strict_order' => false,
+            'strict_core_columns' => [],
+            'required_headers' => [],
+            'optional_headers' => [],
+            'custom_field_start_column' => null,
+            'custom_field_pattern' => '/\|\s*(?<id>[A-Za-z0-9_-]+)\s*$/',
+            'normalize_mode' => 'snake',
+        ],
+        // Backward-compatible fallback per kind if module does not provide policy.
+        'kinds' => [],
+    ],
 ];

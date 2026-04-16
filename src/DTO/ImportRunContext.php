@@ -15,4 +15,28 @@ final class ImportRunContext
         public readonly array $context = []
     ) {
     }
+
+    /**
+     * @param array<string, mixed> $context
+     */
+    public static function from(?int $tenantId, ?int $workspaceId, array $context = []): self
+    {
+        return new self($tenantId, $workspaceId, $context);
+    }
+
+    public function with(string $key, mixed $value): self
+    {
+        $context = $this->context;
+        $context[$key] = $value;
+
+        return new self($this->tenantId, $this->workspaceId, $context);
+    }
+
+    /**
+     * @param mixed $default
+     */
+    public function get(string $key, mixed $default = null): mixed
+    {
+        return $this->context[$key] ?? $default;
+    }
 }

@@ -12,6 +12,7 @@ use RuntimeException;
 use Vendor\ImportKit\Contracts\HeaderLocatorInterface;
 use Vendor\ImportKit\Contracts\SourceReaderInterface;
 use Vendor\ImportKit\DTO\StoredFile;
+use Vendor\ImportKit\DTO\TemplateValidationResult;
 use Vendor\ImportKit\Support\RowWindow;
 
 final class SpreadsheetSourceReader implements SourceReaderInterface
@@ -30,10 +31,18 @@ final class SpreadsheetSourceReader implements SourceReaderInterface
 
     private int $headerRow = 1;
 
+    /**
+     * @var array<string, mixed>
+     */
+    private array $metadata = [];
+
+    private TemplateValidationResult $templateValidation;
+
     public function __construct(
         private readonly HeaderLocatorInterface $headerLocator
     )
     {
+        $this->templateValidation = TemplateValidationResult::ok();
     }
 
     public function open(StoredFile $file): void
@@ -53,11 +62,26 @@ final class SpreadsheetSourceReader implements SourceReaderInterface
         $located = $this->headerLocator->locate($this->sheet, $highestRow, $highestColumnIndex);
         $this->headerRow = max(1, (int) ($located['header_row'] ?? 1));
         $this->headerMap = (array) ($located['header_map'] ?? []);
+        $this->metadata = (array) ($located['meta'] ?? []);
+        $templateValidation = $located['template_validation'] ?? null;
+        $this->templateValidation = $templateValidation instanceof TemplateValidationResult
+            ? $templateValidation
+            : TemplateValidationResult::ok($this->metadata);
     }
 
     public function headers(): array
     {
         return array_keys($this->headerMap);
+    }
+
+    public function metadata(): array
+    {
+        return $this->metadata;
+    }
+
+    public function templateValidation(): TemplateValidationResult
+    {
+        return $this->templateValidation;
     }
 
     public function rows(?RowWindow $window = null): iterable
@@ -104,6 +128,8 @@ final class SpreadsheetSourceReader implements SourceReaderInterface
         $this->sheet = null;
         $this->headerMap = [];
         $this->headerRow = 1;
+        $this->metadata = [];
+        $this->templateValidation = TemplateValidationResult::ok();
     }
 
     private function resolveAbsolutePath(StoredFile $file): string

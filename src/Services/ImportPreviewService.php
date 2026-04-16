@@ -8,6 +8,7 @@ use Vendor\ImportKit\Contracts\ImportRegistryInterface;
 use Vendor\ImportKit\Contracts\PreviewSessionStoreInterface;
 use Vendor\ImportKit\Contracts\SourceReaderInterface;
 use Vendor\ImportKit\Contracts\SourceReaderResolverInterface;
+use Vendor\ImportKit\DTO\ImportRunContext;
 use Vendor\ImportKit\DTO\PreviewResult;
 use Vendor\ImportKit\DTO\StoredFile;
 use Vendor\ImportKit\Pipeline\ImportPipeline;
@@ -29,12 +30,21 @@ final class ImportPreviewService
         string $kind,
         string $sessionId,
         StoredFile $file,
+        ?ImportRunContext $runContext = null,
         ?SourceReaderInterface $reader = null,
         ?RowWindow $rowWindow = null
     ): PreviewResult {
         $module = $this->registry->get($kind);
-        $resolvedReader = $reader ?? $this->sourceReaderResolver->resolve($file, $kind);
-        $result = $this->pipeline->run(ImportMode::PREVIEW, $sessionId, $module, $file, $resolvedReader, $rowWindow);
+        $resolvedReader = $reader ?? $this->sourceReaderResolver->resolve($file, $kind, $module, $runContext);
+        $result = $this->pipeline->run(
+            ImportMode::PREVIEW,
+            $sessionId,
+            $module,
+            $file,
+            $resolvedReader,
+            $runContext,
+            $rowWindow
+        );
 
         if (!$result instanceof PreviewResult) {
             throw new \RuntimeException('Preview pipeline returned invalid result.');

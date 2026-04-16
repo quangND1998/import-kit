@@ -5,13 +5,19 @@ declare(strict_types=1);
 namespace Vendor\ImportKit\Pipeline;
 
 use RuntimeException;
+use Vendor\ImportKit\Contracts\ContextAwareRowCommitterInterface;
+use Vendor\ImportKit\Contracts\CustomFieldAwareImportModuleInterface;
 use Vendor\ImportKit\Contracts\ImportModuleInterface;
 use Vendor\ImportKit\Contracts\SourceReaderInterface;
 use Vendor\ImportKit\DTO\CommitResult;
+use Vendor\ImportKit\DTO\CustomFieldValue;
+use Vendor\ImportKit\DTO\ImportRunContext;
 use Vendor\ImportKit\DTO\ImportResultRowData;
 use Vendor\ImportKit\DTO\PreviewResult;
 use Vendor\ImportKit\DTO\PreviewRowResult;
 use Vendor\ImportKit\DTO\StoredFile;
+use Vendor\ImportKit\DTO\ValidationResult;
+use Vendor\ImportKit\Exceptions\InvalidTemplateException;
 use Vendor\ImportKit\Support\ImportMode;
 use Vendor\ImportKit\Support\RowWindow;
 
@@ -26,10 +32,16 @@ final class ImportPipeline
         ImportModuleInterface $module,
         StoredFile $file,
         SourceReaderInterface $reader,
+        ?ImportRunContext $runContext = null,
         ?RowWindow $rowWindow = null
     ) {
         $reader->open($file);
         $headers = $reader->headers();
+        $metadata = $reader->metadata();
+        $templateValidation = $reader->templateValidation();
+        if (!$templateValidation->ok) {
+            throw new InvalidTemplateException($templateValidation->errors);
+        }
 
         $missingHeaders = array_diff($module->requiredHeaders(), $headers);
         if ($missingHeaders !== []) {
@@ -40,6 +52,8 @@ final class ImportPipeline
         $validator = $module->makeRowValidator();
         $mapper = $module->makeRowMapper();
         $committer = $module->makeRowCommitter();
+        $context = $runContext ?? ImportRunContext::from(null, null, []);
+        $customFieldMap = (array) ($metadata['custom_field_map'] ?? []);
 
         $line = 1;
         $summary = [
@@ -61,6 +75,13 @@ final class ImportPipeline
             }
 
             $validation = $validator->validate($normalized);
+            $customFieldValues = $this->extractCustomFieldValues($normalized, $customFieldMap);
+            if ($module instanceof CustomFieldAwareImportModuleInterface && $customFieldValues !== []) {
+                $customFieldErrors = $module->validateCustomFieldValues($normalized, $customFieldValues, $context);
+                if ($customFieldErrors !== []) {
+                    $validation = ValidationResult::fail(array_merge($validation->errors, $customFieldErrors));
+                }
+            }
             if (!$validation->ok) {
                 $summary['error']++;
                 if ($mode === ImportMode::PREVIEW) {
@@ -72,10 +93,20 @@ final class ImportPipeline
             }
 
             $mapped = $mapper->map($normalized);
+            if ($customFieldValues !== []) {
+                $mapped['custom_field_values'] = array_map(
+                    static fn (CustomFieldValue $value): array => $value->toArray(),
+                    $customFieldValues
+                );
+            }
             $summary['ok']++;
 
             if ($mode === ImportMode::COMMIT) {
-                $committer->commit($mapped);
+                if ($committer instanceof ContextAwareRowCommitterInterface) {
+                    $committer->commitWithContext($mapped, $context);
+                } else {
+                    $committer->commit($mapped);
+                }
                 $rows[] = new ImportResultRowData($line, 'ok', [], $normalized, $mapped);
                 continue;
             }
@@ -120,5 +151,39 @@ final class ImportPipeline
         }
 
         return true;
+    }
+
+    /**
+     * @param array<string, mixed> $normalized
+     * @param array<string, array<string, mixed>> $customFieldMap
+     * @return array<int, CustomFieldValue>
+     */
+    private function extractCustomFieldValues(array $normalized, array $customFieldMap): array
+    {
+        if ($customFieldMap === []) {
+            return [];
+        }
+
+        $values = [];
+        foreach ($customFieldMap as $columnKey => $mapping) {
+            $customFieldId = (string) ($mapping['custom_field_id'] ?? '');
+            if ($customFieldId === '') {
+                continue;
+            }
+
+            $value = $normalized[$columnKey] ?? null;
+            $values[] = new CustomFieldValue(
+                customFieldId: $customFieldId,
+                value: $value,
+                columnIndex: isset($mapping['column_index']) ? (int) $mapping['column_index'] : null,
+                columnKey: $columnKey,
+                meta: [
+                    'label' => $mapping['label'] ?? null,
+                    'data_type' => $mapping['data_type'] ?? null,
+                ]
+            );
+        }
+
+        return $values;
     }
 }

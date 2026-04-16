@@ -16,6 +16,7 @@ use Vendor\ImportKit\Contracts\PreviewSessionStoreInterface;
 use Vendor\ImportKit\Contracts\SourceReaderResolverInterface;
 use Vendor\ImportKit\DTO\ImportJobErrorData;
 use Vendor\ImportKit\DTO\ImportJobResultRowData;
+use Vendor\ImportKit\DTO\ImportRunContext;
 use Vendor\ImportKit\DTO\StoredFile;
 use Vendor\ImportKit\Pipeline\ImportPipeline;
 use Vendor\ImportKit\Support\ImportMode;
@@ -59,22 +60,33 @@ final class RunImportJob implements ShouldQueue
 
             $module = $registry->get($job->kind);
             $sessionContext = $session->context;
+            $runContext = ImportRunContext::from(
+                tenantId: $session->tenantId,
+                workspaceId: $session->workspaceId,
+                context: is_array($sessionContext) ? $sessionContext : []
+            );
             $sessionDisk = is_array($sessionContext) && isset($sessionContext['disk']) && is_string($sessionContext['disk'])
                 ? $sessionContext['disk']
                 : (string) config('import.files.disk', 'local');
             $storedFile = new StoredFile(
                 handle: $session->fileHandle,
                 disk: $sessionDisk,
-                path: $session->fileHandle
+                path: $session->fileHandle,
+                meta: [
+                    'tenant_id' => $session->tenantId,
+                    'workspace_id' => $session->workspaceId,
+                    'context' => is_array($sessionContext) ? $sessionContext : [],
+                ]
             );
-            $reader = $sourceReaderResolver->resolve($storedFile, $job->kind);
+            $reader = $sourceReaderResolver->resolve($storedFile, $job->kind, $module, $runContext);
 
             $result = $pipeline->run(
                 mode: ImportMode::COMMIT,
                 sessionId: $job->sessionId,
                 module: $module,
                 file: $storedFile,
-                reader: $reader
+                reader: $reader,
+                runContext: $runContext
             );
             if (!$result instanceof CommitResult) {
                 throw new \RuntimeException('Commit pipeline returned invalid result.');

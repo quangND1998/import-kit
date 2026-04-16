@@ -22,4 +22,13 @@ final class PreviewSessionData
         public readonly CarbonImmutable $expiresAt
     ) {
     }
+
+    public function runContext(): ImportRunContext
+    {
+        return ImportRunContext::from(
+            tenantId: $this->tenantId,
+            workspaceId: $this->workspaceId,
+            context: $this->context
+        );
+    }
 }

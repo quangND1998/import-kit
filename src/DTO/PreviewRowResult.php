@@ -25,12 +25,40 @@ final class PreviewRowResult
      */
     public function toArray(): array
     {
+        $preview = $this->preview;
+        if (is_array($preview) && isset($preview['custom_field_values']) && is_array($preview['custom_field_values'])) {
+            $preview['custom_field_values'] = $this->normalizeCustomFieldValues($preview['custom_field_values']);
+        }
+
         return [
             'line' => $this->line,
             'status' => $this->status,
             'errors' => array_map(static fn (ValidationError $error) => $error->toArray(), $this->errors),
             'normalized' => $this->normalized,
-            'preview' => $this->preview,
+            'preview' => $preview,
         ];
+    }
+
+    /**
+     * @param array<int, mixed> $values
+     * @return array<int, array<string, mixed>>
+     */
+    private function normalizeCustomFieldValues(array $values): array
+    {
+        $normalized = [];
+        foreach ($values as $value) {
+            if (is_array($value)) {
+                $normalized[] = $value;
+                continue;
+            }
+
+            if (is_object($value) && method_exists($value, 'toArray')) {
+                /** @var array<string, mixed> $item */
+                $item = $value->toArray();
+                $normalized[] = $item;
+            }
+        }
+
+        return $normalized;
     }
 }
