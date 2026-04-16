@@ -27,13 +27,43 @@ final class PreviewResult
      */
     public function toArray(): array
     {
+        $rows = array_map(static fn (PreviewRowResult $row) => $row->toArray(), $this->rows);
+        $errorRows = [];
+        foreach ($rows as $row) {
+            if (($row['status'] ?? '') !== 'error') {
+                continue;
+            }
+
+            $errorRows[] = [
+                'row' => (int) ($row['row'] ?? $row['line'] ?? 0),
+                'errors' => (array) ($row['errors'] ?? []),
+            ];
+        }
+
+        $page = (int) ($this->pagination['page'] ?? 1);
+        $perPage = max(1, (int) ($this->pagination['per_page'] ?? 20));
+        $totalRows = (int) ($this->summary['total_seen'] ?? 0);
+        $lastPage = (int) ceil($totalRows / $perPage);
+
         return [
+            'mode' => 'preview',
+            'import_session_id' => $this->sessionId,
+            'page' => $page,
+            'per_page' => $perPage,
+            'total_rows' => $totalRows,
+            'total_row_ok' => (int) ($this->summary['ok'] ?? 0),
+            'total_row_error' => (int) ($this->summary['error'] ?? 0),
+            'last_page' => max(1, $lastPage),
+            'imported' => (int) ($this->summary['ok'] ?? 0),
+            'skipped' => (int) ($this->summary['skipped_blank'] ?? 0),
+            'rows' => $rows,
+            'errors' => $errorRows,
+            'column_labels' => $this->columnLabels,
             'session_id' => $this->sessionId,
             'kind' => $this->kind,
             'summary' => $this->summary,
             'pagination' => $this->pagination,
-            'column_labels' => $this->columnLabels,
-            'rows' => array_map(static fn (PreviewRowResult $row) => $row->toArray(), $this->rows),
+            'legacy_rows' => $rows,
         ];
     }
 }

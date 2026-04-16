@@ -65,7 +65,7 @@ final class MongoPreviewSessionRepository implements PreviewSessionStoreInterfac
             $payload = array_map(
                 static fn (array $row): array => [
                     'session_id' => $id,
-                    'line' => (int) ($row['line'] ?? 0),
+                    'line' => (int) ($row['line'] ?? $row['row'] ?? 0),
                     'status' => (string) ($row['status'] ?? 'unknown'),
                     'payload' => $row,
                     'created_at' => $now,

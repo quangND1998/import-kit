@@ -65,7 +65,7 @@ final class EloquentPreviewSessionRepository implements PreviewSessionStoreInter
             ImportPreviewSnapshotRow::query()->insert(array_map(
                 fn (array $row): array => [
                     'session_id' => $id,
-                    'line' => (int) ($row['line'] ?? 0),
+                    'line' => (int) ($row['line'] ?? $row['row'] ?? 0),
                     'status' => (string) ($row['status'] ?? 'unknown'),
                     'payload' => $this->encodeJson($row),
                     'created_at' => $now,

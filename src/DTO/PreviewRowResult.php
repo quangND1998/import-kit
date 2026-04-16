@@ -30,10 +30,34 @@ final class PreviewRowResult
             $preview['custom_field_values'] = $this->normalizeCustomFieldValues($preview['custom_field_values']);
         }
 
+        $fieldErrors = [];
+        $messages = [];
+        foreach ($this->errors as $error) {
+            if (!$error instanceof ValidationError) {
+                continue;
+            }
+
+            if (!isset($fieldErrors[$error->field])) {
+                $fieldErrors[$error->field] = [];
+            }
+            $fieldErrors[$error->field][] = $error->message;
+            $messages[] = $error->message;
+        }
+
+        $messages = array_values(array_unique($messages));
+        $data = $preview ?? $this->normalized;
+        $firstError = $this->errors[0] ?? null;
+        $errorCode = $firstError instanceof ValidationError ? $firstError->code : null;
+
         return [
+            'row' => $this->line,
             'line' => $this->line,
             'status' => $this->status,
-            'errors' => array_map(static fn (ValidationError $error) => $error->toArray(), $this->errors),
+            'data' => $data,
+            'message' => $messages,
+            'error_code' => $errorCode,
+            'errors' => $fieldErrors,
+            'raw_errors' => array_map(static fn (ValidationError $error) => $error->toArray(), $this->errors),
             'normalized' => $this->normalized,
             'preview' => $preview,
         ];
