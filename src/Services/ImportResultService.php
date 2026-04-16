@@ -20,6 +20,7 @@ final class ImportResultService
      * @return array{
      *   rows: array<int, array<string, mixed>>,
      *   column_labels: array<string, string>,
+     *   meta: array<string, mixed>,
      *   pagination: array{page: int, per_page: int, filtered_total: int, next_cursor: ?string},
      *   filters: array{status: string}
      * }|null

@@ -18,11 +18,16 @@ interface PreviewSessionStoreInterface
     /**
      * @param array<int, array<string, mixed>> $rows
      * @param array<string, string> $columnLabels
+     * @param array<string, mixed> $meta
      */
-    public function savePreviewSnapshot(string $id, array $rows, array $columnLabels = []): void;
+    public function savePreviewSnapshot(string $id, array $rows, array $columnLabels = [], array $meta = []): void;
 
     /**
-     * @return array{rows: array<int, array<string, mixed>>, column_labels: array<string, string>}|null
+     * @return array{
+     *   rows: array<int, array<string, mixed>>,
+     *   column_labels: array<string, string>,
+     *   meta: array<string, mixed>
+     * }|null
      */
     public function getPreviewSnapshot(string $id): ?array;
 
@@ -30,6 +35,7 @@ interface PreviewSessionStoreInterface
      * @return array{
      *   rows: array<int, array<string, mixed>>,
      *   column_labels: array<string, string>,
+     *   meta: array<string, mixed>,
      *   pagination: array{page: int, per_page: int, filtered_total: int, next_cursor: ?string},
      *   filters: array{status: ?string}
      * }|null

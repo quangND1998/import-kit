@@ -57,7 +57,7 @@ final class MongoPreviewSessionRepository implements PreviewSessionStoreInterfac
         ]);
     }
 
-    public function savePreviewSnapshot(string $id, array $rows, array $columnLabels = []): void
+    public function savePreviewSnapshot(string $id, array $rows, array $columnLabels = [], array $meta = []): void
     {
         $this->snapshotRowsQuery()->where('session_id', $id)->delete();
         if ($rows !== []) {
@@ -80,6 +80,7 @@ final class MongoPreviewSessionRepository implements PreviewSessionStoreInterfac
             'context.preview_snapshot' => [
                 'stored_rows' => count($rows),
                 'column_labels' => $columnLabels,
+                'meta' => $meta,
             ],
             'updated_at' => now()->toDateTimeString(),
         ]);
@@ -105,6 +106,7 @@ final class MongoPreviewSessionRepository implements PreviewSessionStoreInterfac
         return [
             'rows' => $storedRows !== [] ? $storedRows : (array) ($snapshot['rows'] ?? []),
             'column_labels' => (array) ($snapshot['column_labels'] ?? []),
+            'meta' => (array) ($snapshot['meta'] ?? []),
         ];
     }
 
@@ -142,6 +144,7 @@ final class MongoPreviewSessionRepository implements PreviewSessionStoreInterfac
         return [
             'rows' => $rows,
             'column_labels' => (array) ($snapshot['column_labels'] ?? []),
+            'meta' => (array) ($snapshot['meta'] ?? []),
             'pagination' => [
                 'page' => $window->page(),
                 'per_page' => $window->limit,

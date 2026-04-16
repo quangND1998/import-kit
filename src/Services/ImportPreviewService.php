@@ -32,7 +32,8 @@ final class ImportPreviewService
         StoredFile $file,
         ?ImportRunContext $runContext = null,
         ?SourceReaderInterface $reader = null,
-        ?RowWindow $rowWindow = null
+        ?RowWindow $rowWindow = null,
+        bool $validate = true
     ): PreviewResult {
         $module = $this->registry->get($kind);
         $resolvedReader = $reader ?? $this->sourceReaderResolver->resolve($file, $kind, $module, $runContext);
@@ -43,7 +44,8 @@ final class ImportPreviewService
             $file,
             $resolvedReader,
             $runContext,
-            $rowWindow
+            $rowWindow,
+            $validate
         );
 
         if (!$result instanceof PreviewResult) {
@@ -56,13 +58,19 @@ final class ImportPreviewService
             summary: $result->summary,
             pagination: $result->pagination,
             rows: $result->rows,
-            columnLabels: $this->columnLabelService->labelsFor($module)
+            columnLabels: $this->columnLabelService->labelsFor($module),
+            validated: $validate,
+            dataSource: 'file'
         );
 
         $this->sessions->savePreviewSnapshot(
             $sessionId,
             array_map(static fn ($row): array => $row->toArray(), $decorated->rows),
-            $decorated->columnLabels
+            $decorated->columnLabels,
+            [
+                'validated' => $validate,
+                'source' => 'file',
+            ]
         );
 
         return $decorated;

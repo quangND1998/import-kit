@@ -33,7 +33,8 @@ final class ImportPipeline
         StoredFile $file,
         SourceReaderInterface $reader,
         ?ImportRunContext $runContext = null,
-        ?RowWindow $rowWindow = null
+        ?RowWindow $rowWindow = null,
+        bool $validateRows = true
     ) {
         $reader->open($file);
         $headers = $reader->headers();
@@ -74,9 +75,11 @@ final class ImportPipeline
                 continue;
             }
 
-            $validation = $validator->validate($normalized);
+            $validation = $validateRows
+                ? $validator->validate($normalized)
+                : ValidationResult::ok();
             $customFieldValues = $this->extractCustomFieldValues($normalized, $customFieldMap);
-            if ($module instanceof CustomFieldAwareImportModuleInterface && $customFieldValues !== []) {
+            if ($validateRows && $module instanceof CustomFieldAwareImportModuleInterface && $customFieldValues !== []) {
                 $customFieldErrors = $module->validateCustomFieldValues($normalized, $customFieldValues, $context);
                 if ($customFieldErrors !== []) {
                     $validation = ValidationResult::fail(array_merge($validation->errors, $customFieldErrors));
@@ -135,7 +138,9 @@ final class ImportPipeline
                 'next_cursor' => $filteredTotal === $perPage ? (string) ($window->offset + $perPage) : null,
             ],
             rows: $rows,
-            columnLabels: $module->columnLabels()
+            columnLabels: $module->columnLabels(),
+            validated: $validateRows,
+            dataSource: 'file'
         );
     }
 

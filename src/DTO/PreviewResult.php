@@ -18,7 +18,9 @@ final class PreviewResult
         public readonly array $summary,
         public readonly array $pagination,
         public readonly array $rows,
-        public readonly array $columnLabels = []
+        public readonly array $columnLabels = [],
+        public readonly bool $validated = true,
+        public readonly string $dataSource = 'file'
     ) {
     }
 
@@ -48,6 +50,8 @@ final class PreviewResult
         return [
             'mode' => 'preview',
             'import_session_id' => $this->sessionId,
+            'validated' => $this->validated,
+            'data_source' => $this->dataSource,
             'page' => $page,
             'per_page' => $perPage,
             'total_rows' => $totalRows,
@@ -59,6 +63,10 @@ final class PreviewResult
             'rows' => $rows,
             'errors' => $errorRows,
             'column_labels' => $this->columnLabels,
+            'meta' => [
+                'validated' => $this->validated,
+                'source' => $this->dataSource,
+            ],
             'session_id' => $this->sessionId,
             'kind' => $this->kind,
             'summary' => $this->summary,

@@ -56,7 +56,7 @@ final class EloquentPreviewSessionRepository implements PreviewSessionStoreInter
         ]);
     }
 
-    public function savePreviewSnapshot(string $id, array $rows, array $columnLabels = []): void
+    public function savePreviewSnapshot(string $id, array $rows, array $columnLabels = [], array $meta = []): void
     {
         ImportPreviewSnapshotRow::query()->where('session_id', $id)->delete();
 
@@ -80,6 +80,7 @@ final class EloquentPreviewSessionRepository implements PreviewSessionStoreInter
                 'preview_snapshot' => [
                     'stored_rows' => count($rows),
                     'column_labels' => $columnLabels,
+                    'meta' => $meta,
                 ],
             ]),
         ]);
@@ -107,6 +108,7 @@ final class EloquentPreviewSessionRepository implements PreviewSessionStoreInter
         return [
             'rows' => $storedRows !== [] ? $storedRows : (array) ($snapshot['rows'] ?? []),
             'column_labels' => (array) ($snapshot['column_labels'] ?? []),
+            'meta' => (array) ($snapshot['meta'] ?? []),
         ];
     }
 
@@ -142,6 +144,7 @@ final class EloquentPreviewSessionRepository implements PreviewSessionStoreInter
         return [
             'rows' => $rows,
             'column_labels' => (array) ($snapshot['column_labels'] ?? []),
+            'meta' => (array) ($snapshot['meta'] ?? []),
             'pagination' => [
                 'page' => $window->page(),
                 'per_page' => $window->limit,
