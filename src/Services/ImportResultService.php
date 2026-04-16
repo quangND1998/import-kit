@@ -102,16 +102,20 @@ final class ImportResultService
     public function resultRows(string $jobId, ?string $status = null, ?RowWindow $rowWindow = null): array
     {
         $result = $this->jobs->getResultRows($jobId, $this->normalizeStatus($status), $rowWindow);
+        $meta = array_merge(
+            (array) ($result['meta'] ?? []),
+            [
+                'validated' => true,
+                'source' => 'job_result',
+            ]
+        );
         return $this->responseFormatter->format(
             mode: 'result',
             id: $jobId,
             rows: (array) ($result['rows'] ?? []),
             pagination: (array) ($result['pagination'] ?? []),
             columnLabels: (array) ($result['column_labels'] ?? []),
-            meta: [
-                'validated' => true,
-                'source' => 'job_result',
-            ],
+            meta: $meta,
             filters: (array) ($result['filters'] ?? ['status' => 'all'])
         );
     }

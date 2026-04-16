@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Vendor\ImportKit\Repositories\Mongo;
 
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
 use Vendor\ImportKit\Contracts\PreviewSessionStoreInterface;
 use Vendor\ImportKit\DTO\PreviewSessionData;
@@ -76,11 +77,28 @@ final class MongoPreviewSessionRepository implements PreviewSessionStoreInterfac
             $this->snapshotRowsQuery()->insert($payload);
         }
 
+        $overallOkRows = 0;
+        $overallErrorRows = 0;
+        foreach ($rows as $row) {
+            $status = (string) ($row['status'] ?? 'unknown');
+            if ($status === 'ok') {
+                $overallOkRows++;
+            } elseif ($status === 'error') {
+                $overallErrorRows++;
+            }
+        }
+
+        $snapshotMeta = array_merge($meta, [
+            'overall_total_rows' => count($rows),
+            'overall_ok_rows' => $overallOkRows,
+            'overall_error_rows' => $overallErrorRows,
+        ]);
+
         $this->query()->where('_id', $id)->update([
             'context.preview_snapshot' => [
                 'stored_rows' => count($rows),
                 'column_labels' => $columnLabels,
-                'meta' => $meta,
+                'meta' => $snapshotMeta,
             ],
             'updated_at' => now()->toDateTimeString(),
         ]);
@@ -117,7 +135,7 @@ final class MongoPreviewSessionRepository implements PreviewSessionStoreInterfac
             return null;
         }
 
-        $window = $rowWindow ?? new RowWindow(0, (int) config('import.preview.default_per_page', 20));
+        $window = $rowWindow ?? new RowWindow(0, (int) Config::get('import.preview.default_per_page', 20));
 
         $query = $this->snapshotRowsQuery()->where('session_id', $id);
         if (is_string($status) && $status !== '') {
@@ -141,10 +159,27 @@ final class MongoPreviewSessionRepository implements PreviewSessionStoreInterfac
             ? (string) ($window->offset + $window->limit)
             : null;
 
+        $overallTotal = (int) $this->snapshotRowsQuery()
+            ->where('session_id', $id)
+            ->count();
+        $overallOk = (int) $this->snapshotRowsQuery()
+            ->where('session_id', $id)
+            ->where('status', 'ok')
+            ->count();
+        $overallError = (int) $this->snapshotRowsQuery()
+            ->where('session_id', $id)
+            ->where('status', 'error')
+            ->count();
+        $meta = array_merge((array) ($snapshot['meta'] ?? []), [
+            'overall_total_rows' => $overallTotal,
+            'overall_ok_rows' => $overallOk,
+            'overall_error_rows' => $overallError,
+        ]);
+
         return [
             'rows' => $rows,
             'column_labels' => (array) ($snapshot['column_labels'] ?? []),
-            'meta' => (array) ($snapshot['meta'] ?? []),
+            'meta' => $meta,
             'pagination' => [
                 'page' => $window->page(),
                 'per_page' => $window->limit,
@@ -159,13 +194,13 @@ final class MongoPreviewSessionRepository implements PreviewSessionStoreInterfac
 
     private function query()
     {
-        return DB::connection((string) config('import.database.mongo.connection', 'mongodb'))
-            ->table((string) config('import.database.mongo.preview_sessions_collection', 'import_preview_sessions'));
+        return DB::connection((string) Config::get('import.database.mongo.connection', 'mongodb'))
+            ->table((string) Config::get('import.database.mongo.preview_sessions_collection', 'import_preview_sessions'));
     }
 
     private function snapshotRowsQuery()
     {
-        return DB::connection((string) config('import.database.mongo.connection', 'mongodb'))
-            ->table((string) config('import.database.mongo.preview_snapshot_rows_collection', 'import_preview_snapshot_rows'));
+        return DB::connection((string) Config::get('import.database.mongo.connection', 'mongodb'))
+            ->table((string) Config::get('import.database.mongo.preview_snapshot_rows_collection', 'import_preview_snapshot_rows'));
     }
 }

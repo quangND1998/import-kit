@@ -126,6 +126,7 @@ final class EloquentImportJobRepository implements ImportJobRepositoryInterface
     public function getResultRows(string $id, ?string $status = null, ?RowWindow $rowWindow = null): array
     {
         $window = $rowWindow ?? new RowWindow(0, (int) Config::get('import.preview.default_per_page', 20));
+        $job = ImportJob::query()->find($id);
 
         $query = ImportJobResultRow::query()->where('job_id', $id);
         if (is_string($status) && $status !== '') {
@@ -150,6 +151,12 @@ final class EloquentImportJobRepository implements ImportJobRepositoryInterface
         return [
             'rows' => $rows,
             'column_labels' => [],
+            'meta' => [
+                'overall_total_rows' => $job instanceof ImportJob ? (int) $job->total_rows : null,
+                'overall_ok_rows' => $job instanceof ImportJob ? (int) $job->ok_rows : null,
+                'overall_error_rows' => $job instanceof ImportJob ? (int) $job->error_rows : null,
+                'skipped' => $job instanceof ImportJob ? (int) $job->skipped_blank_rows : 0,
+            ],
             'pagination' => [
                 'page' => $window->page(),
                 'per_page' => $window->limit,

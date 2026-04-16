@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Vendor\ImportKit\Repositories\Eloquent;
 
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\Config;
 use JsonException;
 use Vendor\ImportKit\Contracts\PreviewSessionStoreInterface;
 use Vendor\ImportKit\DTO\PreviewSessionData;
@@ -75,12 +76,29 @@ final class EloquentPreviewSessionRepository implements PreviewSessionStoreInter
             ));
         }
 
+        $overallOkRows = 0;
+        $overallErrorRows = 0;
+        foreach ($rows as $row) {
+            $status = (string) ($row['status'] ?? 'unknown');
+            if ($status === 'ok') {
+                $overallOkRows++;
+            } elseif ($status === 'error') {
+                $overallErrorRows++;
+            }
+        }
+
+        $snapshotMeta = array_merge($meta, [
+            'overall_total_rows' => count($rows),
+            'overall_ok_rows' => $overallOkRows,
+            'overall_error_rows' => $overallErrorRows,
+        ]);
+
         ImportPreviewSession::query()->whereKey($id)->update([
             'context' => $this->encodeJson([
                 'preview_snapshot' => [
                     'stored_rows' => count($rows),
                     'column_labels' => $columnLabels,
-                    'meta' => $meta,
+                    'meta' => $snapshotMeta,
                 ],
             ]),
         ]);
@@ -119,7 +137,7 @@ final class EloquentPreviewSessionRepository implements PreviewSessionStoreInter
             return null;
         }
 
-        $window = $rowWindow ?? new RowWindow(0, (int) config('import.preview.default_per_page', 20));
+        $window = $rowWindow ?? new RowWindow(0, (int) Config::get('import.preview.default_per_page', 20));
 
         $query = ImportPreviewSnapshotRow::query()->where('session_id', $id);
         if (is_string($status) && $status !== '') {
@@ -141,10 +159,27 @@ final class EloquentPreviewSessionRepository implements PreviewSessionStoreInter
             ? (string) ($window->offset + $window->limit)
             : null;
 
+        $overallTotal = (int) ImportPreviewSnapshotRow::query()
+            ->where('session_id', $id)
+            ->count();
+        $overallOk = (int) ImportPreviewSnapshotRow::query()
+            ->where('session_id', $id)
+            ->where('status', 'ok')
+            ->count();
+        $overallError = (int) ImportPreviewSnapshotRow::query()
+            ->where('session_id', $id)
+            ->where('status', 'error')
+            ->count();
+        $meta = array_merge((array) ($snapshot['meta'] ?? []), [
+            'overall_total_rows' => $overallTotal,
+            'overall_ok_rows' => $overallOk,
+            'overall_error_rows' => $overallError,
+        ]);
+
         return [
             'rows' => $rows,
             'column_labels' => (array) ($snapshot['column_labels'] ?? []),
-            'meta' => (array) ($snapshot['meta'] ?? []),
+            'meta' => $meta,
             'pagination' => [
                 'page' => $window->page(),
                 'per_page' => $window->limit,

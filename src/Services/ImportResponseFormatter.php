@@ -24,7 +24,7 @@ final class ImportResponseFormatter
         array $filters = ['status' => 'all']
     ): array {
         $perPage = max(1, (int) ($pagination['per_page'] ?? 20));
-        $totalRows = (int) ($pagination['filtered_total'] ?? count($rows));
+        $totalRows = (int) ($meta['overall_total_rows'] ?? $pagination['filtered_total'] ?? count($rows));
         $lastPage = (int) ceil($totalRows / $perPage);
 
         $okCount = 0;
@@ -43,6 +43,9 @@ final class ImportResponseFormatter
             }
         }
 
+        $overallOkCount = (int) ($meta['overall_ok_rows'] ?? $okCount);
+        $overallErrorCount = (int) ($meta['overall_error_rows'] ?? $errorCount);
+
         $idKey = $mode === 'result' ? 'import_job_id' : 'import_session_id';
         $sourceDefault = $mode === 'result' ? 'job_result' : 'session';
         $validatedDefault = $mode === 'result';
@@ -55,10 +58,10 @@ final class ImportResponseFormatter
             'page' => (int) ($pagination['page'] ?? 1),
             'per_page' => $perPage,
             'total_rows' => $totalRows,
-            'total_row_ok' => $okCount,
-            'total_row_error' => $errorCount,
+            'total_row_ok' => $overallOkCount,
+            'total_row_error' => $overallErrorCount,
             'last_page' => max(1, $lastPage),
-            'imported' => $okCount,
+            'imported' => $overallOkCount,
             'skipped' => (int) ($meta['skipped'] ?? 0),
             'rows' => $rows,
             'errors' => $errorRows,
@@ -66,6 +69,9 @@ final class ImportResponseFormatter
             'meta' => [
                 'validated' => (bool) ($meta['validated'] ?? $validatedDefault),
                 'source' => (string) ($meta['source'] ?? $sourceDefault),
+                'overall_total_rows' => $totalRows,
+                'overall_ok_rows' => $overallOkCount,
+                'overall_error_rows' => $overallErrorCount,
             ],
             'pagination' => $pagination,
             'filters' => $filters,

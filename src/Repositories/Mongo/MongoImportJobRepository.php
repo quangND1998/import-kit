@@ -126,6 +126,7 @@ final class MongoImportJobRepository implements ImportJobRepositoryInterface
     public function getResultRows(string $id, ?string $status = null, ?RowWindow $rowWindow = null): array
     {
         $window = $rowWindow ?? new RowWindow(0, (int) Config::get('import.preview.default_per_page', 20));
+        $job = (array) $this->query()->where('_id', $id)->first();
 
         $query = $this->resultRowsQuery()->where('job_id', $id);
         if (is_string($status) && $status !== '') {
@@ -153,6 +154,12 @@ final class MongoImportJobRepository implements ImportJobRepositoryInterface
         return [
             'rows' => $rows,
             'column_labels' => [],
+            'meta' => [
+                'overall_total_rows' => isset($job['total_rows']) ? (int) $job['total_rows'] : null,
+                'overall_ok_rows' => isset($job['ok_rows']) ? (int) $job['ok_rows'] : null,
+                'overall_error_rows' => isset($job['error_rows']) ? (int) $job['error_rows'] : null,
+                'skipped' => isset($job['skipped_blank_rows']) ? (int) $job['skipped_blank_rows'] : 0,
+            ],
             'pagination' => [
                 'page' => $window->page(),
                 'per_page' => $window->limit,
