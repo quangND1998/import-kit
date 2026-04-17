@@ -41,12 +41,9 @@ final class ImportKitServiceProvider extends ServiceProvider
     {
         $this->mergeConfigFrom(__DIR__ . '/../config/import.php', 'import');
         $this->app->singleton(FileStoreInterface::class, LocalFileStore::class);
+        // Keep default locator concrete to avoid recursive/interface override loops.
+        $this->app->singleton(DefaultHeaderLocator::class, fn (): DefaultHeaderLocator => new DefaultHeaderLocator());
         $this->app->bind(HeaderLocatorInterface::class, DefaultHeaderLocator::class);
-        $this->app->singleton(DefaultHeaderLocator::class, function (): HeaderLocatorInterface {
-            /** @var HeaderLocatorInterface $locator */
-            $locator = $this->app->make(HeaderLocatorInterface::class);
-            return $locator;
-        });
         $this->app->singleton(HeaderLocatorRegistryInterface::class, function (): HeaderLocatorRegistryInterface {
             /** @var HeaderLocatorInterface $defaultLocator */
             $defaultLocator = $this->app->make(DefaultHeaderLocator::class);
