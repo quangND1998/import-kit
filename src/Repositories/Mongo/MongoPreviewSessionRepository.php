@@ -24,8 +24,8 @@ final class MongoPreviewSessionRepository implements PreviewSessionStoreInterfac
             'context' => $session->context,
             'status' => $session->status,
             'expires_at' => $session->expiresAt->toDateTimeString(),
-            'created_at' => now()->toDateTimeString(),
-            'updated_at' => now()->toDateTimeString(),
+            'created_at' => CarbonImmutable::now()->toDateTimeString(),
+            'updated_at' => CarbonImmutable::now()->toDateTimeString(),
         ]);
 
         return $session;
@@ -46,7 +46,7 @@ final class MongoPreviewSessionRepository implements PreviewSessionStoreInterfac
             workspaceId: isset($record['workspace_id']) ? (int) $record['workspace_id'] : null,
             context: (array) ($record['context'] ?? []),
             status: (string) ($record['status'] ?? 'pending'),
-            expiresAt: CarbonImmutable::parse((string) ($record['expires_at'] ?? now()->toDateTimeString()))
+            expiresAt: CarbonImmutable::parse((string) ($record['expires_at'] ?? CarbonImmutable::now()->toDateTimeString()))
         );
     }
 
@@ -54,7 +54,17 @@ final class MongoPreviewSessionRepository implements PreviewSessionStoreInterfac
     {
         $this->query()->where('_id', $id)->update([
             'status' => $status,
-            'updated_at' => now()->toDateTimeString(),
+            'updated_at' => CarbonImmutable::now()->toDateTimeString(),
+        ]);
+    }
+
+    public function updateFileContextAndStatus(string $id, string $fileHandle, array $context, string $status): void
+    {
+        $this->query()->where('_id', $id)->update([
+            'file_handle' => $fileHandle,
+            'context' => $context,
+            'status' => $status,
+            'updated_at' => CarbonImmutable::now()->toDateTimeString(),
         ]);
     }
 
@@ -62,7 +72,7 @@ final class MongoPreviewSessionRepository implements PreviewSessionStoreInterfac
     {
         $this->snapshotRowsQuery()->where('session_id', $id)->delete();
         if ($rows !== []) {
-            $now = now()->toDateTimeString();
+            $now = CarbonImmutable::now()->toDateTimeString();
             $payload = array_map(
                 static fn (array $row): array => [
                     'session_id' => $id,
@@ -100,7 +110,7 @@ final class MongoPreviewSessionRepository implements PreviewSessionStoreInterfac
                 'column_labels' => $columnLabels,
                 'meta' => $snapshotMeta,
             ],
-            'updated_at' => now()->toDateTimeString(),
+            'updated_at' => CarbonImmutable::now()->toDateTimeString(),
         ]);
     }
 

@@ -16,6 +16,11 @@ interface PreviewSessionStoreInterface
     public function updateStatus(string $id, string $status): void;
 
     /**
+     * @param array<string, mixed> $context
+     */
+    public function updateFileContextAndStatus(string $id, string $fileHandle, array $context, string $status): void;
+
+    /**
      * @param array<int, array<string, mixed>> $rows
      * @param array<string, string> $columnLabels
      * @param array<string, mixed> $meta

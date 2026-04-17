@@ -57,6 +57,15 @@ final class EloquentPreviewSessionRepository implements PreviewSessionStoreInter
         ]);
     }
 
+    public function updateFileContextAndStatus(string $id, string $fileHandle, array $context, string $status): void
+    {
+        ImportPreviewSession::query()->whereKey($id)->update([
+            'file_handle' => $fileHandle,
+            'context' => $context,
+            'status' => $status,
+        ]);
+    }
+
     public function savePreviewSnapshot(string $id, array $rows, array $columnLabels = [], array $meta = []): void
     {
         ImportPreviewSnapshotRow::query()->where('session_id', $id)->delete();
@@ -93,15 +102,18 @@ final class EloquentPreviewSessionRepository implements PreviewSessionStoreInter
             'overall_error_rows' => $overallErrorRows,
         ]);
 
-        ImportPreviewSession::query()->whereKey($id)->update([
-            'context' => $this->encodeJson([
-                'preview_snapshot' => [
-                    'stored_rows' => count($rows),
-                    'column_labels' => $columnLabels,
-                    'meta' => $snapshotMeta,
-                ],
-            ]),
-        ]);
+        $record = ImportPreviewSession::query()->find($id);
+        if ($record instanceof ImportPreviewSession) {
+            $context = (array) ($record->context ?? []);
+            $context['preview_snapshot'] = [
+                'stored_rows' => count($rows),
+                'column_labels' => $columnLabels,
+                'meta' => $snapshotMeta,
+            ];
+
+            $record->context = $context;
+            $record->save();
+        }
     }
 
     public function getPreviewSnapshot(string $id): ?array

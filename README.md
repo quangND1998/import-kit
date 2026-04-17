@@ -356,6 +356,11 @@ Neu template sai strict rule:
 
 ## 10) Commit flow implementation (chi tiet)
 
+Luu y architecture (multi-container):
+- Preview phase: uu tien `import.files.disk=local` de doc nhanh.
+- Submit phase: package se ensure file nam tren `import.submit.disk` (default `s3_happytime`) truoc khi queue job.
+- Worker phase: file duoc tai ve local temp (`import.worker.local_temp_dir`) de parser doc, xong se cleanup temp + source submit, va mark session `consumed`.
+
 ### 10.1 Submit commit job
 
 ```php

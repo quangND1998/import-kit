@@ -6,9 +6,11 @@ namespace Vendor\ImportKit\Jobs;
 
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
-use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Config;
+use Illuminate\Support\Facades\Storage;
+use Carbon\CarbonImmutable;
 use Throwable;
 use Vendor\ImportKit\Contracts\ImportJobRepositoryInterface;
 use Vendor\ImportKit\Contracts\ImportRegistryInterface;
@@ -24,7 +26,6 @@ use Vendor\ImportKit\DTO\CommitResult;
 
 final class RunImportJob implements ShouldQueue
 {
-    use Dispatchable;
     use InteractsWithQueue;
     use Queueable;
     use SerializesModels;
@@ -49,7 +50,7 @@ final class RunImportJob implements ShouldQueue
 
         $jobs->update($this->jobId, [
             'status' => 'processing',
-            'started_at' => now(),
+            'started_at' => CarbonImmutable::now(),
         ]);
 
         try {
@@ -67,7 +68,7 @@ final class RunImportJob implements ShouldQueue
             );
             $sessionDisk = is_array($sessionContext) && isset($sessionContext['disk']) && is_string($sessionContext['disk'])
                 ? $sessionContext['disk']
-                : (string) config('import.files.disk', 'local');
+                : (string) Config::get('import.files.disk', 'local');
             $storedFile = new StoredFile(
                 handle: $session->fileHandle,
                 disk: $sessionDisk,
@@ -127,8 +128,10 @@ final class RunImportJob implements ShouldQueue
             $jobs->update($this->jobId, [
                 'status' => 'completed',
                 'summary' => $result->summary,
-                'finished_at' => now(),
+                'finished_at' => CarbonImmutable::now(),
             ]);
+            $this->cleanupSourceFile($sessionDisk, $session->fileHandle);
+            $sessions->updateStatus($job->sessionId, 'consumed');
         } catch (Throwable $throwable) {
             $jobs->appendErrors($this->jobId, [
                 new ImportJobErrorData(
@@ -143,8 +146,17 @@ final class RunImportJob implements ShouldQueue
             $jobs->update($this->jobId, [
                 'status' => 'failed',
                 'summary' => ['message' => $throwable->getMessage()],
-                'finished_at' => now(),
+                'finished_at' => CarbonImmutable::now(),
             ]);
+        }
+    }
+
+    private function cleanupSourceFile(string $disk, string $fileHandle): void
+    {
+        try {
+            Storage::disk($disk)->delete($fileHandle);
+        } catch (Throwable) {
+            // Best-effort cleanup. Import result has already been committed.
         }
     }
 }

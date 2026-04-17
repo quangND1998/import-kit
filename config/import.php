@@ -81,6 +81,34 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Submit Storage (Worker-Shared Source)
+    |--------------------------------------------------------------------------
+    |
+    | Files are promoted to this disk on submit so async workers in other
+    | containers can always access a shared source (typically S3).
+    |  s3_happytime defined in filesystems.php
+    |
+    */
+    'submit' => [
+        'disk' => env('IMPORT_SUBMIT_DISK', 'local'),
+        'directory' => env('IMPORT_SUBMIT_DIRECTORY', 'import-kit/submitted'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Worker Local Temp
+    |--------------------------------------------------------------------------
+    |
+    | Worker copies source file from submit storage to this local directory
+    | before parsing. Temporary files are cleaned up after processing.
+    |
+    */
+    'worker' => [
+        'local_temp_dir' => env('IMPORT_WORKER_LOCAL_TEMP_DIR', sys_get_temp_dir()),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Preview Behavior
     |--------------------------------------------------------------------------
     |

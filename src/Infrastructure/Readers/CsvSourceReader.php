@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Vendor\ImportKit\Infrastructure\Readers;
 
+use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Storage;
 use RuntimeException;
 use Vendor\ImportKit\Contracts\SourceReaderInterface;
@@ -23,11 +24,15 @@ final class CsvSourceReader implements SourceReaderInterface
      */
     private array $headers = [];
 
+    private ?string $temporaryLocalPath = null;
+
     public function open(StoredFile $file): void
     {
-        $stream = Storage::disk($file->disk)->readStream($file->path);
+        $this->cleanupTemporaryFile();
+        $localPath = $this->stageToLocalTemp($file);
+        $stream = fopen($localPath, 'rb');
         if ($stream === false) {
-            throw new RuntimeException('Cannot open source file: ' . $file->path . ' on disk ' . $file->disk);
+            throw new RuntimeException('Cannot open staged source file: ' . $localPath);
         }
 
         $this->handle = $stream;
@@ -81,6 +86,8 @@ final class CsvSourceReader implements SourceReaderInterface
             fclose($this->handle);
             $this->handle = null;
         }
+
+        $this->cleanupTemporaryFile();
     }
 
     /**
@@ -95,5 +102,63 @@ final class CsvSourceReader implements SourceReaderInterface
         }
 
         return $normalized;
+    }
+
+    private function stageToLocalTemp(StoredFile $file): string
+    {
+        $stream = Storage::disk($file->disk)->readStream($file->path);
+        if ($stream === false) {
+            throw new RuntimeException('Cannot open source file: ' . $file->path . ' on disk ' . $file->disk);
+        }
+
+        $extension = strtolower((string) pathinfo($file->path, PATHINFO_EXTENSION));
+        $temporaryDir = rtrim((string) Config::get('import.worker.local_temp_dir', sys_get_temp_dir()), DIRECTORY_SEPARATOR);
+        if ($temporaryDir === '' || (!is_dir($temporaryDir) && !mkdir($temporaryDir, 0777, true) && !is_dir($temporaryDir))) {
+            fclose($stream);
+            throw new RuntimeException('Unable to prepare local temp directory for CSV import worker.');
+        }
+
+        $temporaryPath = tempnam($temporaryDir, 'import-kit-');
+        if ($temporaryPath === false) {
+            fclose($stream);
+            throw new RuntimeException('Unable to create temporary file for CSV import.');
+        }
+
+        if ($extension !== '') {
+            $renamedPath = $temporaryPath . '.' . $extension;
+            if (@rename($temporaryPath, $renamedPath)) {
+                $temporaryPath = $renamedPath;
+            }
+        }
+
+        $target = fopen($temporaryPath, 'wb');
+        if ($target === false) {
+            fclose($stream);
+            throw new RuntimeException('Unable to open local temporary CSV file for writing.');
+        }
+
+        try {
+            stream_copy_to_stream($stream, $target);
+        } finally {
+            fclose($target);
+            fclose($stream);
+        }
+
+        $this->temporaryLocalPath = $temporaryPath;
+
+        return $temporaryPath;
+    }
+
+    private function cleanupTemporaryFile(): void
+    {
+        if ($this->temporaryLocalPath === null) {
+            return;
+        }
+
+        if (is_file($this->temporaryLocalPath)) {
+            @unlink($this->temporaryLocalPath);
+        }
+
+        $this->temporaryLocalPath = null;
     }
 }

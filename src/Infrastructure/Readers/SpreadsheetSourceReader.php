@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Vendor\ImportKit\Infrastructure\Readers;
 
+use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Storage;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -38,6 +39,8 @@ final class SpreadsheetSourceReader implements SourceReaderInterface
 
     private TemplateValidationResult $templateValidation;
 
+    private ?string $temporaryLocalPath = null;
+
     public function __construct(
         private readonly HeaderLocatorInterface $headerLocator
     )
@@ -51,6 +54,7 @@ final class SpreadsheetSourceReader implements SourceReaderInterface
             throw new RuntimeException('PhpSpreadsheet is required for xlsx/xls import.');
         }
 
+        $this->cleanupTemporaryFile();
         $absolutePath = $this->resolveAbsolutePath($file);
         $this->spreadsheet = IOFactory::load($absolutePath);
         $this->sheet = $this->spreadsheet->getActiveSheet();
@@ -130,6 +134,7 @@ final class SpreadsheetSourceReader implements SourceReaderInterface
         $this->headerRow = 1;
         $this->metadata = [];
         $this->templateValidation = TemplateValidationResult::ok();
+        $this->cleanupTemporaryFile();
     }
 
     private function resolveAbsolutePath(StoredFile $file): string
@@ -139,12 +144,62 @@ final class SpreadsheetSourceReader implements SourceReaderInterface
             return $metaPath;
         }
 
-        $path = Storage::disk($file->disk)->path($file->path);
-        if (!is_file($path)) {
-            throw new RuntimeException('Spreadsheet file not found at path: ' . $path);
+        $stream = Storage::disk($file->disk)->readStream($file->path);
+        if ($stream === false) {
+            throw new RuntimeException('Cannot open source spreadsheet: ' . $file->path . ' on disk ' . $file->disk);
         }
 
-        return $path;
+        $extension = strtolower((string) pathinfo($file->path, PATHINFO_EXTENSION));
+        $temporaryDir = rtrim((string) Config::get('import.worker.local_temp_dir', sys_get_temp_dir()), DIRECTORY_SEPARATOR);
+        if ($temporaryDir === '' || (!is_dir($temporaryDir) && !mkdir($temporaryDir, 0777, true) && !is_dir($temporaryDir))) {
+            throw new RuntimeException('Unable to prepare local temp directory for import worker.');
+        }
+
+        $temporaryPath = tempnam($temporaryDir, 'import-kit-');
+        if ($temporaryPath === false) {
+            throw new RuntimeException('Unable to create temporary file for spreadsheet import.');
+        }
+
+        if ($extension !== '') {
+            $renamedPath = $temporaryPath . '.' . $extension;
+            if (@rename($temporaryPath, $renamedPath)) {
+                $temporaryPath = $renamedPath;
+            }
+        }
+
+        $target = fopen($temporaryPath, 'wb');
+        if ($target === false) {
+            fclose($stream);
+            throw new RuntimeException('Unable to open local temporary file for writing.');
+        }
+
+        try {
+            stream_copy_to_stream($stream, $target);
+        } finally {
+            fclose($target);
+            fclose($stream);
+        }
+
+        if (!is_file($temporaryPath)) {
+            throw new RuntimeException('Temporary spreadsheet file was not created.');
+        }
+
+        $this->temporaryLocalPath = $temporaryPath;
+
+        return $temporaryPath;
+    }
+
+    private function cleanupTemporaryFile(): void
+    {
+        if ($this->temporaryLocalPath === null) {
+            return;
+        }
+
+        if (is_file($this->temporaryLocalPath)) {
+            @unlink($this->temporaryLocalPath);
+        }
+
+        $this->temporaryLocalPath = null;
     }
 
     /**
