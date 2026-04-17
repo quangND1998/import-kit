@@ -5,10 +5,16 @@ declare(strict_types=1);
 namespace Vendor\ImportKit\Tests\Pipeline;
 
 use PHPUnit\Framework\TestCase;
+use Vendor\ImportKit\Contracts\RowCommitterInterface;
+use Vendor\ImportKit\Contracts\RowMapperInterface;
+use Vendor\ImportKit\Contracts\RowParserInterface;
+use Vendor\ImportKit\Contracts\RowValidatorInterface;
+use Vendor\ImportKit\Contracts\TemplateErrorMessageAwareImportModuleInterface;
 use Vendor\ImportKit\DTO\ImportRunContext;
 use Vendor\ImportKit\DTO\StoredFile;
 use Vendor\ImportKit\DTO\TemplateValidationError;
 use Vendor\ImportKit\DTO\TemplateValidationResult;
+use Vendor\ImportKit\DTO\ValidationResult;
 use Vendor\ImportKit\Exceptions\InvalidTemplateException;
 use Vendor\ImportKit\Pipeline\ImportPipeline;
 use Vendor\ImportKit\Support\ImportMode;
@@ -74,6 +80,97 @@ final class ImportPipelineCustomHeaderTest extends TestCase
         $this->assertSame(1, $result->summary['error']);
         $this->assertSame('error', $result->rows[0]->status);
         $this->assertSame('invalid_custom_field_number', $result->rows[0]->errors[0]->code);
+    }
+
+    public function testInvalidTemplateMessageCanBeCustomizedByModule(): void
+    {
+        $pipeline = new ImportPipeline();
+        $module = new class() implements TemplateErrorMessageAwareImportModuleInterface {
+            public function kind(): string
+            {
+                return 'user_import';
+            }
+
+            public function requiredHeaders(): array
+            {
+                return [];
+            }
+
+            public function optionalHeaders(): array
+            {
+                return [];
+            }
+
+            public function columnLabels(): array
+            {
+                return [];
+            }
+
+            public function invalidTemplateMessage(): string
+            {
+                return 'Template UserImportModule khong dung dinh dang.';
+            }
+
+            public function makeRowParser(): RowParserInterface
+            {
+                return new class() implements RowParserInterface {
+                    public function parse(array $row): array
+                    {
+                        return $row;
+                    }
+                };
+            }
+
+            public function makeRowValidator(): RowValidatorInterface
+            {
+                return new class() implements RowValidatorInterface {
+                    public function validate(array $normalizedRow): ValidationResult
+                    {
+                        return ValidationResult::ok();
+                    }
+                };
+            }
+
+            public function makeRowMapper(): RowMapperInterface
+            {
+                return new class() implements RowMapperInterface {
+                    public function map(array $validatedRow): array
+                    {
+                        return $validatedRow;
+                    }
+                };
+            }
+
+            public function makeRowCommitter(): RowCommitterInterface
+            {
+                return new class() implements RowCommitterInterface {
+                    public function commit(array $mappedRow): void
+                    {
+                    }
+                };
+            }
+        };
+        $reader = new FakeSourceReader(
+            headers: ['employee_id'],
+            rows: [],
+            metadata: [],
+            templateValidation: TemplateValidationResult::fail([
+                new TemplateValidationError('invalid_header_position', 'Header mismatch'),
+            ])
+        );
+
+        try {
+            $pipeline->run(
+                mode: ImportMode::PREVIEW,
+                sessionId: 'session-1',
+                module: $module,
+                file: new StoredFile('h', 'local', 'x.csv'),
+                reader: $reader
+            );
+            $this->fail('Expected InvalidTemplateException was not thrown.');
+        } catch (InvalidTemplateException $exception) {
+            $this->assertSame('Template UserImportModule khong dung dinh dang.', $exception->getMessage());
+        }
     }
 
     public function testCommitUsesContextAwareCommitterAndIncludesCustomFieldValues(): void

@@ -13,9 +13,10 @@ final class InvalidTemplateException extends RuntimeException
      * @param array<int, TemplateValidationError> $errors
      */
     public function __construct(
-        public readonly array $errors
+        public readonly array $errors,
+        string $message = 'Import template is invalid.'
     ) {
-        parent::__construct('Import template is invalid.');
+        parent::__construct($message);
     }
 
     /**

@@ -287,6 +287,31 @@ final class UserRowCommitter implements ContextAwareRowCommitterInterface
 }
 ```
 
+### 7.6 Custom message cho `InvalidTemplateException`
+
+đổi message loi template theo module (vi du `UserImportModule`), implement:
+- `TemplateErrorMessageAwareImportModuleInterface`
+
+```php
+use Vendor\ImportKit\Contracts\ImportModuleInterface;
+use Vendor\ImportKit\Contracts\TemplateErrorMessageAwareImportModuleInterface;
+
+final class UserImportModule implements ImportModuleInterface, TemplateErrorMessageAwareImportModuleInterface
+{
+    public function invalidTemplateMessage(): string
+    {
+        return 'Template import User khong hop le. Vui long dung dung mau file.';
+    }
+
+    // ... cac method khac cua ImportModuleInterface
+}
+```
+
+Behavior:
+- Khi strict template fail, pipeline se throw `InvalidTemplateException`.
+- Neu module co implement interface tren, exception message se lay tu `invalidTemplateMessage()`.
+- Neu khong implement, message mac dinh van la `Import template is invalid.`.
+
 ---
 
 ## 8) Dang ky module vao registry / Register module
@@ -351,6 +376,7 @@ $result = $service->preview(
 Neu template sai strict rule:
 - throw `InvalidTemplateException`
 - co error codes chi tiet (`missing_required_header`, `invalid_header_position`, `invalid_custom_header_format`, ...).
+- co the custom message exception bang `TemplateErrorMessageAwareImportModuleInterface`.
 
 ---
 
@@ -487,6 +513,11 @@ Dung.
 2 cach:
 - Implement `CustomFieldCatalogAwareImportModuleInterface` trong module (recommended).
 - Hoac bind shared `CustomFieldCatalogInterface`.
+
+### Q5: Toi muon doi message khi template sai?
+
+Implement `TemplateErrorMessageAwareImportModuleInterface` trong module va tra ve message qua `invalidTemplateMessage()`.
+Neu khong implement interface nay, package se dung message mac dinh `Import template is invalid.`.
 
 ---
 

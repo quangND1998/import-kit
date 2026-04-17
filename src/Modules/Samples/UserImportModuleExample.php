@@ -6,6 +6,7 @@ namespace Vendor\ImportKit\Modules\Samples;
 
 use Vendor\ImportKit\Contracts\CustomFieldCatalogAwareImportModuleInterface;
 use Vendor\ImportKit\Contracts\HeaderPolicyAwareImportModuleInterface;
+use Vendor\ImportKit\Contracts\TemplateErrorMessageAwareImportModuleInterface;
 use Vendor\ImportKit\Contracts\RowCommitterInterface;
 use Vendor\ImportKit\Contracts\RowMapperInterface;
 use Vendor\ImportKit\Contracts\RowParserInterface;
@@ -22,7 +23,8 @@ use Vendor\ImportKit\Modules\Concerns\HasHeaderPolicy;
 final class UserImportModuleExample implements
     \Vendor\ImportKit\Contracts\ImportModuleInterface,
     HeaderPolicyAwareImportModuleInterface,
-    CustomFieldCatalogAwareImportModuleInterface
+    CustomFieldCatalogAwareImportModuleInterface,
+    TemplateErrorMessageAwareImportModuleInterface
 {
     use HasHeaderPolicy;
 
@@ -47,6 +49,11 @@ final class UserImportModuleExample implements
             'employee_id' => 'Ma dinh danh nhan vien',
             'full_name' => 'Ho va ten',
         ];
+    }
+
+    public function invalidTemplateMessage(): string
+    {
+        return 'Template import User khong hop le.';
     }
 
     public function headerPolicy(ImportRunContext $context): HeaderPolicy
