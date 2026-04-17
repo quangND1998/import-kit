@@ -119,6 +119,9 @@ Khuyến nghị:
 
 ```php
 use Vendor\ImportKit\Contracts\ImportModuleInterface;
+use Vendor\ImportKit\Contracts\ContextAwareRowParserInterface;
+use Vendor\ImportKit\Contracts\ContextAwareRowValidatorInterface;
+use Vendor\ImportKit\Contracts\ContextAwareRowMapperInterface;
 use Vendor\ImportKit\Contracts\RowParserInterface;
 use Vendor\ImportKit\Contracts\RowValidatorInterface;
 use Vendor\ImportKit\Contracts\RowMapperInterface;
@@ -149,12 +152,22 @@ final class UserImportModule implements ImportModuleInterface
         ];
     }
 
-    public function makeRowParser(): RowParserInterface { /* ... */ }
-    public function makeRowValidator(): RowValidatorInterface { /* ... */ }
-    public function makeRowMapper(): RowMapperInterface { /* ... */ }
+    public function makeRowParser(): RowParserInterface { /* parser or context-aware parser */ }
+    public function makeRowValidator(): RowValidatorInterface { /* validator or context-aware validator */ }
+    public function makeRowMapper(): RowMapperInterface { /* mapper or context-aware mapper */ }
     public function makeRowCommitter(): RowCommitterInterface { /* ... */ }
 }
 ```
+
+Context-aware contracts available:
+- `ContextAwareRowParserInterface::parseWithContext(array $row, ImportRunContext $context): array`
+- `ContextAwareRowValidatorInterface::validateWithContext(array $normalizedRow, ImportRunContext $context): ValidationResult`
+- `ContextAwareRowMapperInterface::mapWithContext(array $validatedRow, ImportRunContext $context): array`
+- `ContextAwareRowCommitterInterface::commitWithContext(array $mappedRow, ImportRunContext $context): void`
+
+Pipeline behavior:
+- Neu component implement version context-aware, pipeline se uu tien goi method `*WithContext(...)`.
+- Neu khong, pipeline tiep tuc goi method cu (`parse`, `validate`, `map`, `commit`) de giu backward-compatible.
 
 ### 7.2 Strict header policy trong module (recommended)
 

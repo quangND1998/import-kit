@@ -7,6 +7,8 @@ namespace Vendor\ImportKit\Modules\Samples;
 use Vendor\ImportKit\Contracts\CustomFieldCatalogAwareImportModuleInterface;
 use Vendor\ImportKit\Contracts\CommitDispatchAwareImportModuleInterface;
 use Vendor\ImportKit\Contracts\ContextAwareRowValidatorInterface;
+use Vendor\ImportKit\Contracts\ContextAwareRowParserInterface;
+use Vendor\ImportKit\Contracts\ContextAwareRowMapperInterface;
 use Vendor\ImportKit\Contracts\HeaderPolicyAwareImportModuleInterface;
 use Vendor\ImportKit\Contracts\TemplateErrorMessageAwareImportModuleInterface;
 use Vendor\ImportKit\Contracts\RowCommitterInterface;
@@ -110,9 +112,17 @@ final class UserImportModuleExample implements
 
     public function makeRowParser(): RowParserInterface
     {
-        return new class() implements RowParserInterface {
+        return new class() implements ContextAwareRowParserInterface {
             public function parse(array $row): array
             {
+                return $row;
+            }
+
+            public function parseWithContext(array $row, ImportRunContext $context): array
+            {
+                $row['workspace_id'] = $context->workspaceId;
+                $row['tenant_id'] = $context->tenantId;
+
                 return $row;
             }
         };
@@ -137,9 +147,19 @@ final class UserImportModuleExample implements
 
     public function makeRowMapper(): RowMapperInterface
     {
-        return new class() implements RowMapperInterface {
+        return new class() implements ContextAwareRowMapperInterface {
             public function map(array $validatedRow): array
             {
+                return $validatedRow;
+            }
+
+            public function mapWithContext(array $validatedRow, ImportRunContext $context): array
+            {
+                $validatedRow['_context'] = [
+                    'workspace_id' => $context->workspaceId,
+                    'tenant_id' => $context->tenantId,
+                ];
+
                 return $validatedRow;
             }
         };

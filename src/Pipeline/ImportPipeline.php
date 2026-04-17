@@ -6,6 +6,8 @@ namespace Vendor\ImportKit\Pipeline;
 
 use RuntimeException;
 use Vendor\ImportKit\Contracts\ContextAwareRowCommitterInterface;
+use Vendor\ImportKit\Contracts\ContextAwareRowMapperInterface;
+use Vendor\ImportKit\Contracts\ContextAwareRowParserInterface;
 use Vendor\ImportKit\Contracts\ContextAwareRowValidatorInterface;
 use Vendor\ImportKit\Contracts\CustomFieldAwareImportModuleInterface;
 use Vendor\ImportKit\Contracts\ImportModuleInterface;
@@ -76,7 +78,9 @@ final class ImportPipeline
             $line++;
             $summary['total_seen']++;
 
-            $normalized = $parser->parse($row);
+            $normalized = $parser instanceof ContextAwareRowParserInterface
+                ? $parser->parseWithContext($row, $context)
+                : $parser->parse($row);
             if ($this->isBlankRow($normalized)) {
                 $summary['skipped_blank']++;
                 continue;
@@ -106,7 +110,9 @@ final class ImportPipeline
                 continue;
             }
 
-            $mapped = $mapper->map($normalized);
+            $mapped = $mapper instanceof ContextAwareRowMapperInterface
+                ? $mapper->mapWithContext($normalized, $context)
+                : $mapper->map($normalized);
             if ($customFieldValues !== []) {
                 $mapped['custom_field_values'] = array_map(
                     static fn (CustomFieldValue $value): array => $value->toArray(),

@@ -6,6 +6,8 @@ namespace Vendor\ImportKit\Tests\Pipeline;
 
 use PHPUnit\Framework\TestCase;
 use Vendor\ImportKit\Contracts\ContextAwareRowValidatorInterface;
+use Vendor\ImportKit\Contracts\ContextAwareRowParserInterface;
+use Vendor\ImportKit\Contracts\ContextAwareRowMapperInterface;
 use Vendor\ImportKit\Contracts\RowCommitterInterface;
 use Vendor\ImportKit\Contracts\RowMapperInterface;
 use Vendor\ImportKit\Contracts\RowParserInterface;
@@ -308,6 +310,137 @@ final class ImportPipelineCustomHeaderTest extends TestCase
         );
 
         $this->assertSame(999, $validator->capturedWorkspaceId);
+    }
+
+    public function testParserMapperAndCommitterCanConsumeRunContext(): void
+    {
+        $pipeline = new ImportPipeline();
+        $captured = new class() {
+            public ?int $parserWorkspaceId = null;
+            public ?int $mapperWorkspaceId = null;
+            public ?int $committerWorkspaceId = null;
+        };
+
+        $module = new class($captured) implements \Vendor\ImportKit\Contracts\ImportModuleInterface {
+            public function __construct(private readonly object $captured)
+            {
+            }
+
+            public function kind(): string
+            {
+                return 'position_import';
+            }
+
+            public function requiredHeaders(): array
+            {
+                return ['employee_id'];
+            }
+
+            public function optionalHeaders(): array
+            {
+                return [];
+            }
+
+            public function columnLabels(): array
+            {
+                return [];
+            }
+
+            public function makeRowParser(): RowParserInterface
+            {
+                return new class($this->captured) implements ContextAwareRowParserInterface {
+                    public function __construct(private readonly object $captured)
+                    {
+                    }
+
+                    public function parse(array $row): array
+                    {
+                        return $row;
+                    }
+
+                    public function parseWithContext(array $row, ImportRunContext $context): array
+                    {
+                        $this->captured->parserWorkspaceId = $context->workspaceId;
+                        $row['workspace_id'] = $context->workspaceId;
+
+                        return $row;
+                    }
+                };
+            }
+
+            public function makeRowValidator(): RowValidatorInterface
+            {
+                return new class() implements RowValidatorInterface {
+                    public function validate(array $normalizedRow): ValidationResult
+                    {
+                        return ValidationResult::ok();
+                    }
+                };
+            }
+
+            public function makeRowMapper(): RowMapperInterface
+            {
+                return new class($this->captured) implements ContextAwareRowMapperInterface {
+                    public function __construct(private readonly object $captured)
+                    {
+                    }
+
+                    public function map(array $validatedRow): array
+                    {
+                        return $validatedRow;
+                    }
+
+                    public function mapWithContext(array $validatedRow, ImportRunContext $context): array
+                    {
+                        $this->captured->mapperWorkspaceId = $context->workspaceId;
+                        $validatedRow['_mapped_workspace_id'] = $context->workspaceId;
+
+                        return $validatedRow;
+                    }
+                };
+            }
+
+            public function makeRowCommitter(): RowCommitterInterface
+            {
+                return new class($this->captured) implements \Vendor\ImportKit\Contracts\ContextAwareRowCommitterInterface {
+                    public function __construct(private readonly object $captured)
+                    {
+                    }
+
+                    public function commit(array $mappedRow): void
+                    {
+                        $this->captured->committerWorkspaceId = null;
+                    }
+
+                    public function commitWithContext(array $mappedRow, ImportRunContext $context): void
+                    {
+                        $this->captured->committerWorkspaceId = $context->workspaceId;
+                    }
+                };
+            }
+        };
+
+        $reader = new FakeSourceReader(
+            headers: ['employee_id'],
+            rows: [
+                ['employee_id' => 'E001'],
+            ],
+            metadata: []
+        );
+
+        $result = $pipeline->run(
+            mode: ImportMode::COMMIT,
+            sessionId: 'session-context-all',
+            module: $module,
+            file: new StoredFile('h', 'local', 'x.csv'),
+            reader: $reader,
+            runContext: ImportRunContext::from(tenantId: 1, workspaceId: 777, context: [])
+        );
+
+        $this->assertSame('completed', $result->status);
+        $this->assertSame(777, $captured->parserWorkspaceId);
+        $this->assertSame(777, $captured->mapperWorkspaceId);
+        $this->assertSame(777, $captured->committerWorkspaceId);
     }
 }
 
