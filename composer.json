@@ -1,5 +1,5 @@
 {
-    "name": "happtime/import-kit",
+    "name": "happytime/import-kit",
     "description": "Reusable Laravel import module for Excel/CSV preview and async commit.",
     "type": "library",
     "license": "MIT",
