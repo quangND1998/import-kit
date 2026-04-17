@@ -9,6 +9,7 @@ use Vendor\ImportKit\Contracts\ContextAwareRowCommitterInterface;
 use Vendor\ImportKit\Contracts\CustomFieldAwareImportModuleInterface;
 use Vendor\ImportKit\Contracts\ImportModuleInterface;
 use Vendor\ImportKit\Contracts\SourceReaderInterface;
+use Vendor\ImportKit\Contracts\TemplateErrorMessageAwareImportModuleInterface;
 use Vendor\ImportKit\DTO\CommitResult;
 use Vendor\ImportKit\DTO\CustomFieldValue;
 use Vendor\ImportKit\DTO\ImportRunContext;
@@ -41,7 +42,11 @@ final class ImportPipeline
         $metadata = $reader->metadata();
         $templateValidation = $reader->templateValidation();
         if (!$templateValidation->ok) {
-            throw new InvalidTemplateException($templateValidation->errors);
+            $message = $module instanceof TemplateErrorMessageAwareImportModuleInterface
+                ? $module->invalidTemplateMessage()
+                : 'Import template is invalid.';
+
+            throw new InvalidTemplateException($templateValidation->errors, $message);
         }
 
         $missingHeaders = array_diff($module->requiredHeaders(), $headers);
