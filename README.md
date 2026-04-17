@@ -275,6 +275,37 @@ final class UserImportModule implements ImportModuleInterface, CustomFieldAwareI
 }
 ```
 
+### 7.4.1 Row validator co context (workspace/tenant)
+
+Neu ban can validate theo `workspace_id` hoac `tenant_id`, implement:
+- `ContextAwareRowValidatorInterface`
+
+```php
+use Vendor\ImportKit\Contracts\ContextAwareRowValidatorInterface;
+use Vendor\ImportKit\DTO\ImportRunContext;
+use Vendor\ImportKit\DTO\ValidationResult;
+
+final class PositionRowValidator implements ContextAwareRowValidatorInterface
+{
+    public function validate(array $normalizedRow): ValidationResult
+    {
+        // Backward-compatible fallback
+        return ValidationResult::ok();
+    }
+
+    public function validateWithContext(array $normalizedRow, ImportRunContext $context): ValidationResult
+    {
+        $workspaceId = $context->workspaceId;
+        // Query uniqueness/scoping rules by workspace_id here
+        return ValidationResult::ok();
+    }
+}
+```
+
+Behavior:
+- Neu validator implement interface tren, `ImportPipeline` se uu tien goi `validateWithContext(...)`.
+- Neu khong implement, pipeline van goi `validate(...)` nhu cu (backward-compatible).
+
 ### 7.5 Commit có context (tenant/workspace)
 
 Nếu bạn cần context trong commit layer, implement:

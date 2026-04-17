@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Vendor\ImportKit\Tests\Pipeline;
 
 use PHPUnit\Framework\TestCase;
+use Vendor\ImportKit\Contracts\ContextAwareRowValidatorInterface;
 use Vendor\ImportKit\Contracts\RowCommitterInterface;
 use Vendor\ImportKit\Contracts\RowMapperInterface;
 use Vendor\ImportKit\Contracts\RowParserInterface;
@@ -208,6 +209,105 @@ final class ImportPipelineCustomHeaderTest extends TestCase
         $this->assertCount(1, $committer->committed);
         $this->assertSame(88, $committer->committed[0]['workspace_id']);
         $this->assertArrayHasKey('custom_field_values', $committer->committed[0]['row']);
+    }
+
+    public function testValidatorCanConsumeWorkspaceIdFromRunContext(): void
+    {
+        $pipeline = new ImportPipeline();
+        $reader = new FakeSourceReader(
+            headers: ['employee_id'],
+            rows: [
+                ['employee_id' => 'E001'],
+            ],
+            metadata: []
+        );
+
+        $validator = new class() implements ContextAwareRowValidatorInterface {
+            public ?int $capturedWorkspaceId = null;
+
+            public function validate(array $normalizedRow): ValidationResult
+            {
+                return ValidationResult::ok();
+            }
+
+            public function validateWithContext(array $normalizedRow, ImportRunContext $context): ValidationResult
+            {
+                $this->capturedWorkspaceId = $context->workspaceId;
+
+                return ValidationResult::ok();
+            }
+        };
+
+        $module = new class($validator) implements \Vendor\ImportKit\Contracts\ImportModuleInterface {
+            public function __construct(private readonly ContextAwareRowValidatorInterface $validator)
+            {
+            }
+
+            public function kind(): string
+            {
+                return 'position_import';
+            }
+
+            public function requiredHeaders(): array
+            {
+                return ['employee_id'];
+            }
+
+            public function optionalHeaders(): array
+            {
+                return [];
+            }
+
+            public function columnLabels(): array
+            {
+                return [];
+            }
+
+            public function makeRowParser(): RowParserInterface
+            {
+                return new class() implements RowParserInterface {
+                    public function parse(array $row): array
+                    {
+                        return $row;
+                    }
+                };
+            }
+
+            public function makeRowValidator(): RowValidatorInterface
+            {
+                return $this->validator;
+            }
+
+            public function makeRowMapper(): RowMapperInterface
+            {
+                return new class() implements RowMapperInterface {
+                    public function map(array $validatedRow): array
+                    {
+                        return $validatedRow;
+                    }
+                };
+            }
+
+            public function makeRowCommitter(): RowCommitterInterface
+            {
+                return new class() implements RowCommitterInterface {
+                    public function commit(array $mappedRow): void
+                    {
+                    }
+                };
+            }
+        };
+
+        $pipeline->run(
+            mode: ImportMode::PREVIEW,
+            sessionId: 'session-ctx',
+            module: $module,
+            file: new StoredFile('h', 'local', 'x.csv'),
+            reader: $reader,
+            runContext: ImportRunContext::from(tenantId: 1, workspaceId: 999, context: [])
+        );
+
+        $this->assertSame(999, $validator->capturedWorkspaceId);
     }
 }
 

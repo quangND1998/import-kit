@@ -6,6 +6,7 @@ namespace Vendor\ImportKit\Modules\Samples;
 
 use Vendor\ImportKit\Contracts\CustomFieldCatalogAwareImportModuleInterface;
 use Vendor\ImportKit\Contracts\CommitDispatchAwareImportModuleInterface;
+use Vendor\ImportKit\Contracts\ContextAwareRowValidatorInterface;
 use Vendor\ImportKit\Contracts\HeaderPolicyAwareImportModuleInterface;
 use Vendor\ImportKit\Contracts\TemplateErrorMessageAwareImportModuleInterface;
 use Vendor\ImportKit\Contracts\RowCommitterInterface;
@@ -119,10 +120,17 @@ final class UserImportModuleExample implements
 
     public function makeRowValidator(): RowValidatorInterface
     {
-        return new class() implements RowValidatorInterface {
+        return new class() implements ContextAwareRowValidatorInterface {
             public function validate(array $normalizedRow): ValidationResult
             {
                 return ValidationResult::ok();
+            }
+
+            public function validateWithContext(array $normalizedRow, ImportRunContext $context): ValidationResult
+            {
+                // Example: workspace-aware validation logic.
+                // You can query DB using $context->workspaceId for tenant-specific constraints.
+                return $this->validate($normalizedRow);
             }
         };
     }

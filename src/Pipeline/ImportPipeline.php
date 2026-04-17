@@ -6,6 +6,7 @@ namespace Vendor\ImportKit\Pipeline;
 
 use RuntimeException;
 use Vendor\ImportKit\Contracts\ContextAwareRowCommitterInterface;
+use Vendor\ImportKit\Contracts\ContextAwareRowValidatorInterface;
 use Vendor\ImportKit\Contracts\CustomFieldAwareImportModuleInterface;
 use Vendor\ImportKit\Contracts\ImportModuleInterface;
 use Vendor\ImportKit\Contracts\SourceReaderInterface;
@@ -82,7 +83,11 @@ final class ImportPipeline
             }
 
             $validation = $validateRows
-                ? $validator->validate($normalized)
+                ? (
+                    $validator instanceof ContextAwareRowValidatorInterface
+                        ? $validator->validateWithContext($normalized, $context)
+                        : $validator->validate($normalized)
+                )
                 : ValidationResult::ok();
             $customFieldValues = $this->extractCustomFieldValues($normalized, $customFieldMap);
             if ($validateRows && $module instanceof CustomFieldAwareImportModuleInterface && $customFieldValues !== []) {
