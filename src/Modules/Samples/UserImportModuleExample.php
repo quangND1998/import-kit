@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Vendor\ImportKit\Modules\Samples;
 
 use Vendor\ImportKit\Contracts\CustomFieldCatalogAwareImportModuleInterface;
+use Vendor\ImportKit\Contracts\CommitDispatchAwareImportModuleInterface;
 use Vendor\ImportKit\Contracts\HeaderPolicyAwareImportModuleInterface;
 use Vendor\ImportKit\Contracts\TemplateErrorMessageAwareImportModuleInterface;
 use Vendor\ImportKit\Contracts\RowCommitterInterface;
@@ -24,6 +25,7 @@ final class UserImportModuleExample implements
     \Vendor\ImportKit\Contracts\ImportModuleInterface,
     HeaderPolicyAwareImportModuleInterface,
     CustomFieldCatalogAwareImportModuleInterface,
+    CommitDispatchAwareImportModuleInterface,
     TemplateErrorMessageAwareImportModuleInterface
 {
     use HasHeaderPolicy;
@@ -82,6 +84,26 @@ final class UserImportModuleExample implements
         return [
             new CustomFieldDefinition(id: '123', title: 'Thu nhap', dataType: 'NUMBER'),
             new CustomFieldDefinition(id: '124', title: 'Ngay cap nhat', dataType: 'DATE'),
+        ];
+    }
+
+    public function commitDispatchOptions(ImportRunContext $context): array
+    {
+        // Example dynamic override:
+        // force single mode for tiny imports, use batch for large imports.
+        $forceSingle = (bool) ($context->context['force_single_dispatch'] ?? false);
+        if ($forceSingle) {
+            return [
+                'dispatch_mode' => 'single',
+            ];
+        }
+
+        return [
+            'dispatch_mode' => 'bus_batch',
+            'batch' => [
+                'chunk_size' => 300,
+                'allow_failures' => false,
+            ],
         ];
     }
 

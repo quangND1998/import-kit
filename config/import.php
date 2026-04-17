@@ -123,6 +123,24 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Commit Dispatch Strategy
+    |--------------------------------------------------------------------------
+    |
+    | Choose how async commit jobs are dispatched:
+    | - single: one RunImportJob handles the whole import (legacy behavior)
+    | - bus_batch: split import into chunked RunImportJob(s) via Laravel Bus batch
+    |
+    */
+    'commit' => [
+        'dispatch_mode' => env('IMPORT_COMMIT_DISPATCH_MODE', 'single'),
+        'batch' => [
+            'chunk_size' => (int) env('IMPORT_COMMIT_BATCH_CHUNK_SIZE', 500),
+            'allow_failures' => (bool) env('IMPORT_COMMIT_BATCH_ALLOW_FAILURES', false),
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Column Labels
     |--------------------------------------------------------------------------
     |

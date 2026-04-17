@@ -35,7 +35,8 @@ final class ImportPipeline
         SourceReaderInterface $reader,
         ?ImportRunContext $runContext = null,
         ?RowWindow $rowWindow = null,
-        bool $validateRows = true
+        bool $validateRows = true,
+        int $lineOffset = 0
     ) {
         $reader->open($file);
         $headers = $reader->headers();
@@ -61,7 +62,7 @@ final class ImportPipeline
         $context = $runContext ?? ImportRunContext::from(null, null, []);
         $customFieldMap = (array) ($metadata['custom_field_map'] ?? []);
 
-        $line = 1;
+        $line = 1 + max(0, $lineOffset);
         $summary = [
             'total_seen' => 0,
             'ok' => 0,

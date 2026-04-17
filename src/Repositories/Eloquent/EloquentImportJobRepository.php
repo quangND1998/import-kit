@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Vendor\ImportKit\Repositories\Eloquent;
 
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Config;
 use JsonException;
 use Vendor\ImportKit\Contracts\ImportJobRepositoryInterface;
@@ -79,6 +80,33 @@ final class EloquentImportJobRepository implements ImportJobRepositoryInterface
     public function updateProgress(string $id, array $progress): void
     {
         ImportJob::query()->whereKey($id)->update($progress);
+    }
+
+    public function incrementProgress(string $id, array $increments): void
+    {
+        $allowed = [
+            'total_rows',
+            'processed_rows',
+            'ok_rows',
+            'error_rows',
+            'skipped_blank_rows',
+        ];
+
+        $payload = [];
+        foreach ($allowed as $column) {
+            $value = (int) ($increments[$column] ?? 0);
+            if ($value === 0) {
+                continue;
+            }
+
+            $payload[$column] = DB::raw($column . ' + ' . $value);
+        }
+
+        if ($payload === []) {
+            return;
+        }
+
+        ImportJob::query()->whereKey($id)->update($payload);
     }
 
     public function appendRows(string $id, array $rows): void

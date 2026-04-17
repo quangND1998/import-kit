@@ -77,6 +77,38 @@ final class MongoImportJobRepository implements ImportJobRepositoryInterface
         $this->update($id, $progress);
     }
 
+    public function incrementProgress(string $id, array $increments): void
+    {
+        $allowed = [
+            'total_rows',
+            'processed_rows',
+            'ok_rows',
+            'error_rows',
+            'skipped_blank_rows',
+        ];
+
+        $update = [];
+        foreach ($allowed as $field) {
+            $value = (int) ($increments[$field] ?? 0);
+            if ($value === 0) {
+                continue;
+            }
+
+            $update[$field] = $value;
+        }
+
+        if ($update === []) {
+            return;
+        }
+
+        foreach ($update as $field => $amount) {
+            $this->query()->where('_id', $id)->increment($field, $amount);
+        }
+        $this->query()->where('_id', $id)->update([
+            'updated_at' => now()->toDateTimeString(),
+        ]);
+    }
+
     public function appendRows(string $id, array $rows): void
     {
         if ($rows === []) {

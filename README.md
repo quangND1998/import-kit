@@ -2,41 +2,41 @@
 
 Reusable Laravel import package with preview + async commit pipeline.
 
-Goi y ngon ngu / Language note:
-- Tai lieu viet theo kieu song ngu ngan gon (Viet + English keywords).
-- Code examples uu tien tieng Anh de copy/paste.
+Gợi ý ngôn ngữ / Language note:
+- Tài liệu viết theo kiểu song ngữ ngắn gọn (Viet + English keywords).
+- Code examples ưu tiên tiếng Anh để copy/paste.
 
 ---
 
-## 1) Muc tieu package / What this package solves
+## 1) Mục tiêu package / What this package solves
 
-Package nay giup ban xay import pipeline theo pattern:
+Package này giúp bạn xây import pipeline theo pattern:
 - Upload file -> Preview validation result.
 - Confirm import -> Queue async commit.
 - Track status + errors + result rows.
-- Ho tro custom field dong theo workspace/tenant.
-- Ho tro strict template mapping (header row, column order, custom header format).
+- Hỗ trợ custom field động theo workspace/tenant.
+- Hỗ trợ strict template mapping (header row, column order, custom header format).
 
-Phu hop khi ban muon:
-- Tach business rule ra khoi controller lon.
-- Dung chung import infra cho nhieu domain (`employee`, `user`, `cost_center`, ...).
-- Co flow polling ket qua import job.
+Phù hợp khi bạn muốn:
+- Tách business rule ra khỏi controller lớn.
+- Dùng chung import infra cho nhiều domain (`employee`, `user`, `cost_center`, ...).
+- Có flow polling kết quả import job.
 
 ---
 
-## 2) Kien truc tong quan / High-level architecture
+## 2) Kiến trúc tổng quan / High-level architecture
 
 Core components:
-- `ImportModuleInterface`: module business cho tung `kind`.
+- `ImportModuleInterface`: module business cho từng `kind`.
 - `ImportPipeline`: parser -> validator -> mapper -> committer.
-- `ImportPreviewService`: chay preview mode.
-- `ImportCommitService`: tao job async commit.
-- `RunImportJob`: worker consume queue, chay commit mode.
-- `SourceReaderResolver`: chon `CsvSourceReader` hoac `SpreadsheetSourceReader`.
+- `ImportPreviewService`: chạy preview mode.
+- `ImportCommitService`: tạo job async commit.
+- `RunImportJob`: worker consume queue, chạy commit mode.
+- `SourceReaderResolver`: chọn `CsvSourceReader` hoặc `SpreadsheetSourceReader`.
 - `ConfigurableHeaderLocator`: strict header/custom field validation metadata.
 
 Data stores:
-- MySQL hoac Mongo cho:
+- MySQL hoặc Mongo cho:
   - preview sessions
   - import jobs
   - import errors
@@ -47,7 +47,7 @@ Data stores:
 ## 3) Requirements
 
 - PHP `>=8.0`
-- Laravel `>=10.0`
+- Laravel `>=8.0`
 - `phpoffice/phpspreadsheet` cho `xlsx/xls`
 
 ---
@@ -55,7 +55,7 @@ Data stores:
 ## 4) Installation
 
 ```bash
-composer require vendor/import-kit
+composer require happytime/import-kit
 ```
 
 Publish config:
@@ -79,43 +79,43 @@ php artisan queue:work
 
 ---
 
-## 5) Quick start (5 buoc) / Quick start in 5 steps
+## 5) Quick start (5 bước) / Quick start in 5 steps
 
-1. Tao module class implement `ImportModuleInterface`.
-2. Dang ky module vao `ImportRegistryInterface`.
-3. Goi preview service de validate file.
-4. Tao preview session trong app layer (neu app ban dang quan ly session id).
-5. Submit commit job va poll status.
+1. Tạo module class implement `ImportModuleInterface`.
+2. Đăng ký module vào `ImportRegistryInterface`.
+3. Gọi preview service để validate file.
+4. Tạo preview session trong app layer (nếu app bạn đang quản lý session id).
+5. Submit commit job và poll status.
 
-Chi tiet o cac muc ben duoi.
+Chi tiết ở các mục bên dưới.
 
 ---
 
-## 6) Cau hinh package / Package config
+## 6) Cấu hình package / Package config
 
 File: `config/import.php`
 
-Cac key quan trong:
+Các key quan trọng:
 - `storage_driver`: `mysql` | `mongo`
 - `database.*`: table/collection names
 - `files.disk`, `files.directory`
 - `preview.expires_minutes`, `preview.default_per_page`
 - `column_labels`
-- `header.default` (fallback policy, khong phai noi uu tien)
+- `header.default` (fallback policy, không phải nơi ưu tiên)
 
 ### Header config philosophy
 
-Ban khong can khai bao policy theo `kinds` trong config.
+Bạn không cần khai báo policy theo `kinds` trong config.
 
-Recommended:
+Khuyến nghị:
 - Define header policy trong module class (code-first).
-- `config.import.header.default` chi la fallback de backward-compatible.
+- `config.import.header.default` chỉ là fallback để backward-compatible.
 
 ---
 
-## 7) Huong dan implement module chi tiet / Detailed module implementation
+## 7) Hướng dẫn implement module chi tiết / Detailed module implementation
 
-### 7.1 Tao module co ban
+### 7.1 Tạo module cơ bản
 
 ```php
 use Vendor\ImportKit\Contracts\ImportModuleInterface;
@@ -144,8 +144,8 @@ final class UserImportModule implements ImportModuleInterface
     public function columnLabels(): array
     {
         return [
-            'employee_id' => 'Ma dinh danh',
-            'full_name' => 'Ho va ten',
+            'employee_id' => 'Mã định danh',
+            'full_name' => 'Họ và tên',
         ];
     }
 
@@ -158,15 +158,16 @@ final class UserImportModule implements ImportModuleInterface
 
 ### 7.2 Strict header policy trong module (recommended)
 
-Implement them interface:
+Implement interface sau:
 - `HeaderPolicyAwareImportModuleInterface`
 
 ```php
 use Vendor\ImportKit\Contracts\HeaderPolicyAwareImportModuleInterface;
+use Vendor\ImportKit\Contracts\CommitDispatchAwareImportModuleInterface;
 use Vendor\ImportKit\DTO\HeaderPolicy;
 use Vendor\ImportKit\DTO\ImportRunContext;
 
-final class UserImportModule implements ImportModuleInterface, HeaderPolicyAwareImportModuleInterface
+final class UserImportModule implements ImportModuleInterface, HeaderPolicyAwareImportModuleInterface, CommitDispatchAwareImportModuleInterface
 {
     public function headerPolicy(ImportRunContext $context): HeaderPolicy
     {
@@ -183,14 +184,25 @@ final class UserImportModule implements ImportModuleInterface, HeaderPolicyAware
             normalizeMode: 'snake'
         );
     }
+
+    public function commitDispatchOptions(ImportRunContext $context): array
+    {
+        return [
+            'dispatch_mode' => 'bus_batch',
+            'batch' => [
+                'chunk_size' => 300,
+                'allow_failures' => false,
+            ],
+        ];
+    }
 }
 ```
 
-Luu y quan trong:
-- `strictCoreColumns` compare exact string (`===`), nen tieng Viet co dau duoc ho tro.
-- Neu file sai dau/space/* -> invalid template.
+Lưu ý quan trọng:
+- `strictCoreColumns` compare exact string (`===`), nên tiếng Việt có dấu được hỗ trợ.
+- Nếu file sai dấu/space/* -> invalid template.
 
-### 7.3 Dynamic custom fields tu DB trong module
+### 7.3 Dynamic custom fields từ DB trong module
 
 Implement:
 - `CustomFieldCatalogAwareImportModuleInterface`
@@ -204,7 +216,7 @@ final class UserImportModule implements ImportModuleInterface, CustomFieldCatalo
 {
     public function activeCustomFields(ImportRunContext $context): array
     {
-        // Vi du query DB theo workspace:
+        // Ví dụ query DB theo workspace:
         // $rows = CustomField::query()
         //     ->where('workspace_id', $context->workspaceId)
         //     ->where('is_active', true)
@@ -217,8 +229,8 @@ final class UserImportModule implements ImportModuleInterface, CustomFieldCatalo
         // ))->all();
 
         return [
-            new CustomFieldDefinition(id: '123', title: 'Thu nhap', dataType: 'NUMBER'),
-            new CustomFieldDefinition(id: '124', title: 'Ngay vao cong ty', dataType: 'DATE'),
+            new CustomFieldDefinition(id: '123', title: 'Thu nhập', dataType: 'NUMBER'),
+            new CustomFieldDefinition(id: '124', title: 'Ngày vào công ty', dataType: 'DATE'),
         ];
     }
 }
@@ -229,7 +241,7 @@ final class UserImportModule implements ImportModuleInterface, CustomFieldCatalo
 Implement:
 - `CustomFieldAwareImportModuleInterface`
 
-Pipeline se truyen custom values da parse vao module de validate row-level.
+Pipeline sẽ truyền custom values đã parse vào module để validate row-level.
 
 ```php
 use Vendor\ImportKit\Contracts\CustomFieldAwareImportModuleInterface;
@@ -263,9 +275,9 @@ final class UserImportModule implements ImportModuleInterface, CustomFieldAwareI
 }
 ```
 
-### 7.5 Commit co context (tenant/workspace)
+### 7.5 Commit có context (tenant/workspace)
 
-Neu ban can context trong commit layer, implement:
+Nếu bạn cần context trong commit layer, implement:
 - `ContextAwareRowCommitterInterface`
 
 ```php
@@ -289,7 +301,7 @@ final class UserRowCommitter implements ContextAwareRowCommitterInterface
 
 ### 7.6 Custom message cho `InvalidTemplateException`
 
-đổi message loi template theo module (vi du `UserImportModule`), implement:
+Nếu bạn muốn đổi message lỗi template theo module (ví dụ `UserImportModule`), implement:
 - `TemplateErrorMessageAwareImportModuleInterface`
 
 ```php
@@ -300,23 +312,23 @@ final class UserImportModule implements ImportModuleInterface, TemplateErrorMess
 {
     public function invalidTemplateMessage(): string
     {
-        return 'Template import User khong hop le. Vui long dung dung mau file.';
+        return 'Template import User không hợp lệ. Vui lòng dùng đúng mẫu file.';
     }
 
-    // ... cac method khac cua ImportModuleInterface
+    // ... các method khác của ImportModuleInterface
 }
 ```
 
 Behavior:
-- Khi strict template fail, pipeline se throw `InvalidTemplateException`.
-- Neu module co implement interface tren, exception message se lay tu `invalidTemplateMessage()`.
-- Neu khong implement, message mac dinh van la `Import template is invalid.`.
+- Khi strict template fail, pipeline sẽ throw `InvalidTemplateException`.
+- Nếu module có implement interface trên, exception message sẽ lấy từ `invalidTemplateMessage()`.
+- Nếu không implement, message mặc định vẫn là `Import template is invalid.`.
 
 ---
 
-## 8) Dang ky module vao registry / Register module
+## 8) Đăng ký module vào registry / Register module
 
-Ban dang ky module trong app service provider:
+Bạn đăng ký module trong app service provider:
 
 ```php
 use Vendor\ImportKit\Contracts\ImportRegistryInterface;
@@ -330,9 +342,9 @@ public function boot(): void
 
 ---
 
-## 9) Preview flow implementation (chi tiet)
+## 9) Preview flow implementation (chi tiết)
 
-### 9.1 Tao `StoredFile`
+### 9.1 Tạo `StoredFile`
 
 ```php
 use Vendor\ImportKit\DTO\StoredFile;
@@ -349,7 +361,7 @@ $file = new StoredFile(
 );
 ```
 
-### 9.2 Goi preview service
+### 9.2 Gọi preview service
 
 ```php
 use Vendor\ImportKit\Services\ImportPreviewService;
@@ -367,25 +379,25 @@ $result = $service->preview(
 );
 ```
 
-`$result` co:
+`$result` có:
 - `summary`
 - `rows` (`ok`/`error`)
 - `column_labels`
 - `pagination`
 
-Neu template sai strict rule:
+Nếu template sai strict rule:
 - throw `InvalidTemplateException`
-- co error codes chi tiet (`missing_required_header`, `invalid_header_position`, `invalid_custom_header_format`, ...).
-- co the custom message exception bang `TemplateErrorMessageAwareImportModuleInterface`.
+- có error codes chi tiết (`missing_required_header`, `invalid_header_position`, `invalid_custom_header_format`, ...).
+- có thể custom message exception bằng `TemplateErrorMessageAwareImportModuleInterface`.
 
 ---
 
-## 10) Commit flow implementation (chi tiet)
+## 10) Commit flow implementation (chi tiết)
 
-Luu y architecture (multi-container):
-- Preview phase: uu tien `import.files.disk=local` de doc nhanh.
-- Submit phase: package se ensure file nam tren `import.submit.disk` (default `s3_happytime`) truoc khi queue job.
-- Worker phase: file duoc tai ve local temp (`import.worker.local_temp_dir`) de parser doc, xong se cleanup temp + source submit, va mark session `consumed`.
+Lưu ý architecture (multi-container):
+- Preview phase: ưu tiên `import.files.disk=local` để đọc nhanh.
+- Submit phase: package sẽ ensure file nằm trên `import.submit.disk` (default `s3_happytime`) trước khi queue job.
+- Worker phase: file được tải về local temp (`import.worker.local_temp_dir`) để parser đọc, xong sẽ cleanup temp + source submit, và mark session `consumed`.
 
 ### 10.1 Submit commit job
 
@@ -402,6 +414,26 @@ $job = $service->submit(
     submittedBy: auth()->id()
 );
 ```
+
+### 10.1.1 Chon dispatch mode: single hoac Bus::batch
+
+Mac dinh package van giu behavior cu:
+- `single`: 1 `RunImportJob` xu ly toan bo file.
+
+Neu muon chia theo chunk qua Laravel Bus batch:
+
+```dotenv
+IMPORT_COMMIT_DISPATCH_MODE=bus_batch
+IMPORT_COMMIT_BATCH_CHUNK_SIZE=500
+IMPORT_COMMIT_BATCH_ALLOW_FAILURES=false
+```
+
+Ghi chu:
+- `single` va `bus_batch` deu append vao cung `import_job_result_rows` + `import_job_errors`, khong thay doi API doc ket qua.
+- `bus_batch` dung `incrementProgress` theo chunk de cong don atomically, tranh mat du lieu progress khi job chay song song.
+- Sau khi tat ca chunk thanh cong, package queue them `FinalizeImportJob` de mark `completed`, cap nhat summary cuoi va `consumed` session.
+- Module co the override theo `kind`/`workspace` bang interface `CommitDispatchAwareImportModuleInterface`.
+- Neu module khong override thi package dung config global `import.commit.*`.
 
 ### 10.2 Poll status
 
@@ -466,58 +498,58 @@ IMPORT_MONGO_CONNECTION=mongodb
 
 ## 13) Error codes reference (template level)
 
-Thuong gap:
+Thường gặp:
 - `missing_required_header`
 - `invalid_header_position`
 - `invalid_custom_header_format`
 - `custom_field_not_active`
 
-Row-level (business/custom datatype) do module ban define qua `ValidationError.code`.
+Row-level (business/custom datatype) do module bạn define qua `ValidationError.code`.
 
 ---
 
-## 14) Best practices / Kinh nghiem production
+## 14) Best practices / Kinh nghiệm production
 
-- **Code-first policy**: Dat header policy trong module class, tranh config phinh to.
+- **Code-first policy**: Đặt header policy trong module class, tránh config phình to.
 - **Idempotent commit**: Upsert theo `(entity_id, custom_field_id)`.
-- **Separation**: Parse/Validate/Map/Commit tach nho, de test.
-- **Strict templates** cho flow bat buoc format co dinh.
-- **Flexible headers** (chi `requiredHeaders`) cho flow cho phep doi thu tu cot.
-- **Queue monitoring**: Dat alert cho job `failed`.
-- **Audit trail**: Luu payload goc + mapped payload de debug nhanh.
+- **Separation**: Parse/Validate/Map/Commit tách nhỏ, để test.
+- **Strict templates** cho flow bắt buộc format cố định.
+- **Flexible headers** (chỉ `requiredHeaders`) cho flow cho phép đổi thứ tự cột.
+- **Queue monitoring**: Đặt alert cho job `failed`.
+- **Audit trail**: Lưu payload gốc + mapped payload để debug nhanh.
 
 ---
 
 ## 15) FAQ
 
-### Q1: Co can `requiredHeaders` neu da `strictCoreColumns`?
+### Q1: Có cần `requiredHeaders` nếu đã `strictCoreColumns`?
 
-Khong bat buoc.
-- Strict mode da check exact theo vi tri.
-- `requiredHeaders` la lop bao ve bo sung khi muon check theo key.
+Không bắt buộc.
+- Strict mode đã check exact theo vị trí.
+- `requiredHeaders` là lớp bảo vệ bổ sung khi muốn check theo key.
 
-### Q2: Header tieng Viet co dau co duoc khong?
+### Q2: Header tiếng Việt có dấu có được không?
 
-Co.
+Có.
 - `strictCoreColumns` compare exact string.
-- Can dam bao text trong file khop 100%.
+- Cần đảm bảo text trong file khớp 100%.
 
-### Q3: Toi khong muon config `kinds` trong `import.php`?
+### Q3: Tôi không muốn config `kinds` trong `import.php`?
 
-Dung.
-- Package hien tai uu tien policy trong module class.
-- `config.header.kinds` chi la fallback backward-compatible.
+Đúng.
+- Package hiện tại ưu tiên policy trong module class.
+- `config.header.kinds` chỉ là fallback backward-compatible.
 
-### Q4: Custom field lay tu dau?
+### Q4: Custom field lấy từ đâu?
 
-2 cach:
+2 cách:
 - Implement `CustomFieldCatalogAwareImportModuleInterface` trong module (recommended).
-- Hoac bind shared `CustomFieldCatalogInterface`.
+- Hoặc bind shared `CustomFieldCatalogInterface`.
 
-### Q5: Toi muon doi message khi template sai?
+### Q5: Tôi muốn đổi message khi template sai?
 
-Implement `TemplateErrorMessageAwareImportModuleInterface` trong module va tra ve message qua `invalidTemplateMessage()`.
-Neu khong implement interface nay, package se dung message mac dinh `Import template is invalid.`.
+Implement `TemplateErrorMessageAwareImportModuleInterface` trong module và trả về message qua `invalidTemplateMessage()`.
+Nếu không implement interface này, package sẽ dùng message mặc định `Import template is invalid.`.
 
 ---
 
@@ -533,7 +565,7 @@ Neu khong implement interface nay, package se dung message mac dinh `Import temp
 
 ## 17) Minimal rollout checklist
 
-- [ ] Register module vao registry.
+- [ ] Register module vào registry.
 - [ ] Implement parser/validator/mapper/committer.
 - [ ] Implement header policy in module.
 - [ ] Implement dynamic custom field source from DB.
@@ -546,7 +578,7 @@ Neu khong implement interface nay, package se dung message mac dinh `Import temp
 
 ## 18) Final note
 
-Neu ban dang migrate tu legacy import controller:
-- Lam preview endpoint truoc.
-- Sau do move commit logic vao `RowCommitterInterface`.
-- Cuoi cung mo strict template policy de khoa chat format file.
+Nếu bạn đang migrate từ legacy import controller:
+- Làm preview endpoint trước.
+- Sau đó move commit logic vào `RowCommitterInterface`.
+- Cuối cùng mở strict template policy để khóa chặt format file.
