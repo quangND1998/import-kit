@@ -391,6 +391,25 @@ $result = $service->preview(
 );
 ```
 
+### 9.3 Re-preview bằng `sessionId` (không cần truyền file lại)
+
+`preview()` hỗ trợ `file` nullable:
+
+- Có `file`: chạy preview theo file mới và đồng bộ lại file handle vào preview session.
+- Không có `file`: package tự lấy file từ preview session (`sessionId`) để re-preview/paginate.
+- RunContext nên có context :[ disk: 'local'] chỉ lưu file trên http service 
+```php
+$result = $service->preview(
+    kind: 'user_import',
+    sessionId: $sessionId,
+    file: null,
+    rowWindow: RowWindow::fromPage(1, 20),
+    runContext: ImportRunContext::from(tenantId: 10, workspaceId: 99, context: [
+        disk: 'local'
+    ]),
+);
+```
+
 `$result` có:
 - `summary`
 - `rows` (`ok`/`error`)

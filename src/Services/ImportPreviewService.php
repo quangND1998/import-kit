@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace Vendor\ImportKit\Services;
 
+use Illuminate\Support\Facades\Config;
 use Vendor\ImportKit\Contracts\ImportRegistryInterface;
 use Vendor\ImportKit\Contracts\PreviewSessionStoreInterface;
 use Vendor\ImportKit\Contracts\SourceReaderInterface;
 use Vendor\ImportKit\Contracts\SourceReaderResolverInterface;
 use Vendor\ImportKit\DTO\ImportRunContext;
+use Vendor\ImportKit\DTO\PreviewSessionData;
 use Vendor\ImportKit\DTO\PreviewResult;
 use Vendor\ImportKit\DTO\StoredFile;
 use Vendor\ImportKit\Pipeline\ImportPipeline;
@@ -30,21 +32,40 @@ final class ImportPreviewService
     public function preview(
         string $kind,
         string $sessionId,
-        StoredFile $file,
+        ?StoredFile $file = null,
         ?ImportRunContext $runContext = null,
         ?SourceReaderInterface $reader = null,
         ?RowWindow $rowWindow = null,
         bool $validate = true
     ): PreviewResult {
+        $session = $this->sessions->find($sessionId);
+        if ($session instanceof PreviewSessionData && $session->kind !== $kind) {
+            throw new \RuntimeException("Session '{$sessionId}' kind '{$session->kind}' does not match preview kind '{$kind}'.");
+        }
+
+        $resolvedContext = $runContext;
+        if ($file instanceof StoredFile) {
+            if ($session instanceof PreviewSessionData) {
+                $this->syncSessionFile($session, $file, $runContext);
+            }
+            $resolvedFile = $file;
+        } else {
+            if (!$session instanceof PreviewSessionData) {
+                throw new \RuntimeException("Import preview session '{$sessionId}' not found.");
+            }
+            $resolvedFile = $this->storedFileFromSession($session);
+            $resolvedContext ??= $session->runContext();
+        }
+
         $module = $this->registry->get($kind);
-        $resolvedReader = $reader ?? $this->sourceReaderResolver->resolve($file, $kind, $module, $runContext);
+        $resolvedReader = $reader ?? $this->sourceReaderResolver->resolve($resolvedFile, $kind, $module, $resolvedContext);
         $result = $this->pipeline->run(
             ImportMode::PREVIEW,
             $sessionId,
             $module,
-            $file,
+            $resolvedFile,
             $resolvedReader,
-            $runContext,
+            $resolvedContext,
             $rowWindow,
             $validate
         );
@@ -75,5 +96,40 @@ final class ImportPreviewService
         );
 
         return $decorated;
+    }
+
+    private function storedFileFromSession(PreviewSessionData $session): StoredFile
+    {
+        if ($session->fileHandle === '') {
+            throw new \RuntimeException("Session '{$session->id}' does not have an uploaded file.");
+        }
+
+        $sessionContext = is_array($session->context) ? $session->context : [];
+        $disk = (string) ($sessionContext['disk'] ?? Config::get('import.files.disk', 'local'));
+
+        return new StoredFile(
+            handle: $session->fileHandle,
+            disk: $disk,
+            path: $session->fileHandle,
+            meta: [
+                'tenant_id' => $session->tenantId,
+                'workspace_id' => $session->workspaceId,
+                'context' => $sessionContext,
+            ]
+        );
+    }
+
+    private function syncSessionFile(PreviewSessionData $session, StoredFile $file, ?ImportRunContext $runContext): void
+    {
+        $context = is_array($session->context) ? $session->context : [];
+        $context['disk'] = $file->disk;
+        $context['file_handle'] = $file->handle;
+        $context['file_path'] = $file->path;
+
+        if ($runContext instanceof ImportRunContext) {
+            $context = array_merge($context, $runContext->context);
+        }
+
+        $this->sessions->updateFileContextAndStatus($session->id, $file->handle, $context, 'uploaded');
     }
 }
