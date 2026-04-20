@@ -3,8 +3,19 @@
 Reusable Laravel import package with preview + async commit pipeline.
 
 Gợi ý ngôn ngữ / Language note:
-- Tài liệu viết theo kiểu song ngữ ngắn gọn (Viet + English keywords).
+- Tài liệu viết theo kiểu song ngữ ngắn gọn (Việt + English keywords).
 - Code examples ưu tiên tiếng Anh để copy/paste.
+
+### Breaking changes (row contracts) / Thay đổi phá vỡ tương thích
+
+- (EN) `RowParserInterface`, `RowValidatorInterface`, `RowMapperInterface`, `RowCommitterInterface` now require **`ImportRunContext` as the last parameter** on every call. The separate `ContextAware*` interfaces were removed — migrate by merging `*WithContext` logic into the single method.
+- (VI) Các interface row bắt buộc thêm tham số **`ImportRunContext`** ở cuối mỗi lần gọi; nhóm `ContextAware*` đã bỏ — hãy gộp logic từ `*WithContext` vào một method duy nhất.
+- (EN) Publish new migration `2026_04_21_000006_add_unique_indexes_import_job_rows_errors` for idempotent `appendRows` / `appendErrors` on queue retry (unique `(job_id, line)` and `(job_id, line, field, code)`; null `line` in errors is stored as `-1` for uniqueness).
+- (VI) Chạy migration trên để `appendRows` / `appendErrors` idempotent khi queue retry (unique `(job_id, line)` và `(job_id, line, field, code)`; `line` null trong lỗi được lưu `-1`).
+- (EN) Translations: `php artisan vendor:publish --tag=import-kit-lang` (optional) or use default English fallbacks via `ImportKitTranslator`.
+- (VI) Bản dịch: `php artisan vendor:publish --tag=import-kit-lang` (tùy chọn) hoặc dùng fallback tiếng Anh qua `ImportKitTranslator`.
+- (EN) TTL cleanup: `php artisan import-kit:prune-expired-preview-sessions` (schedule daily in your app).
+- (VI) Dọn session preview hết hạn: lệnh trên; nên lên lịch hằng ngày trong ứng dụng của bạn.
 
 ---
 
@@ -27,7 +38,7 @@ Phù hợp khi bạn muốn:
 ## 2) Kiến trúc tổng quan / High-level architecture
 
 Core components:
-- `ImportModuleInterface`: module business cho từng `kind`.
+- `ImportModuleInterface`: module nghiệp vụ theo từng `kind`.
 - `ImportPipeline`: parser -> validator -> mapper -> committer.
 - `ImportPreviewService`: chạy preview mode.
 - `ImportCommitService`: tạo job async commit.
@@ -119,13 +130,11 @@ Khuyến nghị:
 
 ```php
 use Vendor\ImportKit\Contracts\ImportModuleInterface;
-use Vendor\ImportKit\Contracts\ContextAwareRowParserInterface;
-use Vendor\ImportKit\Contracts\ContextAwareRowValidatorInterface;
-use Vendor\ImportKit\Contracts\ContextAwareRowMapperInterface;
 use Vendor\ImportKit\Contracts\RowParserInterface;
 use Vendor\ImportKit\Contracts\RowValidatorInterface;
 use Vendor\ImportKit\Contracts\RowMapperInterface;
 use Vendor\ImportKit\Contracts\RowCommitterInterface;
+use Vendor\ImportKit\DTO\ImportRunContext;
 
 final class UserImportModule implements ImportModuleInterface
 {
@@ -152,22 +161,16 @@ final class UserImportModule implements ImportModuleInterface
         ];
     }
 
-    public function makeRowParser(): RowParserInterface { /* parser or context-aware parser */ }
-    public function makeRowValidator(): RowValidatorInterface { /* validator or context-aware validator */ }
-    public function makeRowMapper(): RowMapperInterface { /* mapper or context-aware mapper */ }
-    public function makeRowCommitter(): RowCommitterInterface { /* ... */ }
+    public function makeRowParser(): RowParserInterface { /* parse(array $row, ImportRunContext $context): array */ }
+    public function makeRowValidator(): RowValidatorInterface { /* validate(..., ImportRunContext $context) */ }
+    public function makeRowMapper(): RowMapperInterface { /* map(..., ImportRunContext $context) */ }
+    public function makeRowCommitter(): RowCommitterInterface { /* commit(..., ImportRunContext $context) */ }
 }
 ```
 
-Context-aware contracts available:
-- `ContextAwareRowParserInterface::parseWithContext(array $row, ImportRunContext $context): array`
-- `ContextAwareRowValidatorInterface::validateWithContext(array $normalizedRow, ImportRunContext $context): ValidationResult`
-- `ContextAwareRowMapperInterface::mapWithContext(array $validatedRow, ImportRunContext $context): array`
-- `ContextAwareRowCommitterInterface::commitWithContext(array $mappedRow, ImportRunContext $context): void`
+Row contracts (unified): `parse|validate|map|commit` **always** receive `ImportRunContext` as the last argument. Các interface `ContextAware*` đã gỡ bỏ — chỉ cần một method có `ImportRunContext`.
 
-Pipeline behavior:
-- Neu component implement version context-aware, pipeline se uu tien goi method `*WithContext(...)`.
-- Neu khong, pipeline tiep tuc goi method cu (`parse`, `validate`, `map`, `commit`) de giu backward-compatible.
+English: Row parser/validator/mapper/committer methods always take `ImportRunContext`; the old dual `parse` / `parseWithContext` split was removed.
 
 ### 7.2 Strict header policy trong module (recommended)
 
@@ -288,57 +291,22 @@ final class UserImportModule implements ImportModuleInterface, CustomFieldAwareI
 }
 ```
 
-### 7.4.1 Row validator co context (workspace/tenant)
+### 7.4.1 Row validator / commit với `ImportRunContext`
 
-Neu ban can validate theo `workspace_id` hoac `tenant_id`, implement:
-- `ContextAwareRowValidatorInterface`
+Implement `RowValidatorInterface::validate(array $normalizedRow, ImportRunContext $context)` (và tương tự `RowCommitterInterface::commit(...)`) — pipeline luôn truyền `context`.
 
 ```php
-use Vendor\ImportKit\Contracts\ContextAwareRowValidatorInterface;
+use Vendor\ImportKit\Contracts\RowValidatorInterface;
 use Vendor\ImportKit\DTO\ImportRunContext;
 use Vendor\ImportKit\DTO\ValidationResult;
 
-final class PositionRowValidator implements ContextAwareRowValidatorInterface
+final class PositionRowValidator implements RowValidatorInterface
 {
-    public function validate(array $normalizedRow): ValidationResult
-    {
-        // Backward-compatible fallback
-        return ValidationResult::ok();
-    }
-
-    public function validateWithContext(array $normalizedRow, ImportRunContext $context): ValidationResult
+    public function validate(array $normalizedRow, ImportRunContext $context): ValidationResult
     {
         $workspaceId = $context->workspaceId;
         // Query uniqueness/scoping rules by workspace_id here
         return ValidationResult::ok();
-    }
-}
-```
-
-Behavior:
-- Neu validator implement interface tren, `ImportPipeline` se uu tien goi `validateWithContext(...)`.
-- Neu khong implement, pipeline van goi `validate(...)` nhu cu (backward-compatible).
-
-### 7.5 Commit có context (tenant/workspace)
-
-Nếu bạn cần context trong commit layer, implement:
-- `ContextAwareRowCommitterInterface`
-
-```php
-use Vendor\ImportKit\Contracts\ContextAwareRowCommitterInterface;
-use Vendor\ImportKit\DTO\ImportRunContext;
-
-final class UserRowCommitter implements ContextAwareRowCommitterInterface
-{
-    public function commit(array $mappedRow): void
-    {
-        // fallback behavior
-    }
-
-    public function commitWithContext(array $mappedRow, ImportRunContext $context): void
-    {
-        // Use $context->workspaceId / $context->tenantId
-        // Upsert custom field values with idempotent key (entity_id + custom_field_id)
     }
 }
 ```
@@ -363,8 +331,8 @@ final class UserImportModule implements ImportModuleInterface, TemplateErrorMess
 }
 ```
 
-Behavior:
-- Khi strict template fail, pipeline sẽ throw `InvalidTemplateException`.
+Hành vi:
+- Khi template strict không hợp lệ, pipeline sẽ phát sinh `InvalidTemplateException`.
 - Nếu module có implement interface trên, exception message sẽ lấy từ `invalidTemplateMessage()`.
 - Nếu không implement, message mặc định vẫn là `Import template is invalid.`.
 
@@ -431,7 +399,7 @@ $result = $service->preview(
 
 Nếu template sai strict rule:
 - throw `InvalidTemplateException`
-- có error codes chi tiết (`missing_required_header`, `invalid_header_position`, `invalid_custom_header_format`, ...).
+- có mã lỗi chi tiết (`missing_required_header`, `invalid_header_position`, `invalid_custom_header_format`, …).
 - có thể custom message exception bằng `TemplateErrorMessageAwareImportModuleInterface`.
 
 ---
@@ -440,7 +408,7 @@ Nếu template sai strict rule:
 
 Lưu ý architecture (multi-container):
 - Preview phase: ưu tiên `import.files.disk=local` để đọc nhanh.
-- Submit phase: package sẽ ensure file nằm trên `import.submit.disk` (default `s3_happytime`) trước khi queue job.
+- Submit phase: package đảm bảo file nằm trên `import.submit.disk` (mặc định `s3_happytime`) trước khi xếp hàng job.
 - Worker phase: file được tải về local temp (`import.worker.local_temp_dir`) để parser đọc, xong sẽ cleanup temp + source submit, và mark session `consumed`.
 
 ### 10.1 Submit commit job
@@ -459,25 +427,37 @@ $job = $service->submit(
 );
 ```
 
-### 10.1.1 Chon dispatch mode: single hoac Bus::batch
+### 10.1.1 Chọn dispatch mode: `single` hoặc `Bus::batch`
 
-Mac dinh package van giu behavior cu:
-- `single`: 1 `RunImportJob` xu ly toan bo file.
+Mặc định package vẫn giữ hành vi cũ:
+- `single`: một `RunImportJob` xử lý toàn bộ file.
 
-Neu muon chia theo chunk qua Laravel Bus batch:
+Nếu muốn chia theo chunk qua Laravel `Bus::batch`:
 
 ```dotenv
 IMPORT_COMMIT_DISPATCH_MODE=bus_batch
 IMPORT_COMMIT_BATCH_CHUNK_SIZE=500
 IMPORT_COMMIT_BATCH_ALLOW_FAILURES=false
+IMPORT_COMMIT_BATCH_PRECOUNT_LOGICAL_ROWS=true
 ```
 
-Ghi chu:
-- `single` va `bus_batch` deu append vao cung `import_job_result_rows` + `import_job_errors`, khong thay doi API doc ket qua.
-- `bus_batch` dung `incrementProgress` theo chunk de cong don atomically, tranh mat du lieu progress khi job chay song song.
-- Sau khi tat ca chunk thanh cong, package queue them `FinalizeImportJob` de mark `completed`, cap nhat summary cuoi va `consumed` session.
-- Module co the override theo `kind`/`workspace` bang interface `CommitDispatchAwareImportModuleInterface`.
-- Neu module khong override thi package dung config global `import.commit.*`.
+- `IMPORT_COMMIT_BATCH_PRECOUNT_LOGICAL_ROWS=true` (default): trước khi dispatch, package **đếm số dòng non-blank sau parse** để biết `chunk_count` rồi mới `Bus::batch` nhiều `RunImportJob` song song.
+- `false`: **không** full-scan file lúc submit — chỉ queue chunk đầu; mỗi chunk xong tự queue chunk tiếp cho đến hết file, rồi `FinalizeImportJob` (submit nhanh hơn với xlsx lớn).
+
+Ghi chú:
+- `single` và `bus_batch` đều ghi vào cùng `import_job_result_rows` + `import_job_errors`, không đổi API đọc kết quả.
+- `bus_batch` dùng `incrementProgress` theo chunk để cộng dồn (atomic), tránh mất dữ liệu tiến độ khi job chạy song song.
+- Sau khi tất cả chunk thành công, package xếp hàng thêm `FinalizeImportJob` để đánh dấu `completed`, cập nhật summary cuối và session `consumed`.
+- Module có thể ghi đè theo `kind` / `workspace` bằng interface `CommitDispatchAwareImportModuleInterface`.
+- Nếu module không ghi đè thì package dùng config global `import.commit.*`.
+
+### 10.1.2 Preview session TTL
+
+Chạy định kỳ (ví dụ: hằng ngày trong `app/Console/Kernel.php`):
+
+```bash
+php artisan import-kit:prune-expired-preview-sessions
+```
 
 ### 10.2 Poll status
 
@@ -548,7 +528,7 @@ Thường gặp:
 - `invalid_custom_header_format`
 - `custom_field_not_active`
 
-Row-level (business/custom datatype) do module bạn define qua `ValidationError.code`.
+Ở từng dòng (nghiệp vụ / kiểu dữ liệu tùy chỉnh), mã lỗi do chính module của bạn định nghĩa qua `ValidationError.code`.
 
 ---
 
@@ -570,7 +550,7 @@ Row-level (business/custom datatype) do module bạn define qua `ValidationError
 
 Không bắt buộc.
 - Strict mode đã check exact theo vị trí.
-- `requiredHeaders` là lớp bảo vệ bổ sung khi muốn check theo key.
+- `requiredHeaders` là lớp bảo vệ bổ sung khi muốn kiểm tra theo key.
 
 ### Q2: Header tiếng Việt có dấu có được không?
 
@@ -598,7 +578,7 @@ File Excel vẫn có thể ghi tiêu đề tiếng Việt có dấu; key trong `
 
 ### Q5: Tôi muốn đổi message khi template sai?
 
-Implement `TemplateErrorMessageAwareImportModuleInterface` trong module và trả về message qua `invalidTemplateMessage()`.
+Triển khai `TemplateErrorMessageAwareImportModuleInterface` trong module và trả về message qua `invalidTemplateMessage()`.
 Nếu không implement interface này, package sẽ dùng message mặc định `Import template is invalid.`.
 
 ---
@@ -615,14 +595,14 @@ Nếu không implement interface này, package sẽ dùng message mặc định 
 
 ## 17) Minimal rollout checklist
 
-- [ ] Register module vào registry.
-- [ ] Implement parser/validator/mapper/committer.
-- [ ] Implement header policy in module.
-- [ ] Implement dynamic custom field source from DB.
-- [ ] Add preview endpoint + session creation.
-- [ ] Add commit endpoint + status polling endpoint.
-- [ ] Add result list/export endpoint.
-- [ ] Add tests cho template errors + row validation + commit idempotency.
+- [ ] Đăng ký module vào registry.
+- [ ] Triển khai parser / validator / mapper / committer.
+- [ ] Triển khai header policy trong module.
+- [ ] Triển khai nguồn custom field động từ DB.
+- [ ] Thêm endpoint preview + tạo session.
+- [ ] Thêm endpoint commit + poll trạng thái.
+- [ ] Thêm endpoint danh sách / export kết quả.
+- [ ] Thêm test cho lỗi template, validation từng dòng và idempotent commit.
 
 ---
 
@@ -630,5 +610,5 @@ Nếu không implement interface này, package sẽ dùng message mặc định 
 
 Nếu bạn đang migrate từ legacy import controller:
 - Làm preview endpoint trước.
-- Sau đó move commit logic vào `RowCommitterInterface`.
+- Sau đó chuyển logic commit vào `RowCommitterInterface`.
 - Cuối cùng mở strict template policy để khóa chặt format file.

@@ -46,4 +46,9 @@ interface PreviewSessionStoreInterface
      * }|null
      */
     public function getPreviewSnapshotRows(string $id, ?string $status = null, ?RowWindow $rowWindow = null): ?array;
+
+    /**
+     * Delete preview sessions past expires_at and their snapshot rows.
+     */
+    public function deleteExpiredPreviewSessions(): int;
 }

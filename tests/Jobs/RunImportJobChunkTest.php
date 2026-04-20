@@ -265,6 +265,11 @@ final class InMemoryPreviewSessionStore implements PreviewSessionStoreInterface
     {
         return null;
     }
+
+    public function deleteExpiredPreviewSessions(): int
+    {
+        return 0;
+    }
 }
 
 final class InMemoryImportRegistry implements ImportRegistryInterface

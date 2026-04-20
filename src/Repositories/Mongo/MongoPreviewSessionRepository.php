@@ -202,6 +202,19 @@ final class MongoPreviewSessionRepository implements PreviewSessionStoreInterfac
         ];
     }
 
+    public function deleteExpiredPreviewSessions(): int
+    {
+        $now = CarbonImmutable::now()->toDateTimeString();
+        $ids = $this->query()->where('expires_at', '<', $now)->pluck('_id')->all();
+        if ($ids === []) {
+            return 0;
+        }
+
+        $this->snapshotRowsQuery()->whereIn('session_id', $ids)->delete();
+
+        return (int) $this->query()->whereIn('_id', $ids)->delete();
+    }
+
     private function query()
     {
         return DB::connection((string) Config::get('import.database.mongo.connection', 'mongodb'))

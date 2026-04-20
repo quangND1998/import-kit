@@ -5,9 +5,6 @@ declare(strict_types=1);
 namespace Vendor\ImportKit\Tests\Pipeline;
 
 use PHPUnit\Framework\TestCase;
-use Vendor\ImportKit\Contracts\ContextAwareRowValidatorInterface;
-use Vendor\ImportKit\Contracts\ContextAwareRowParserInterface;
-use Vendor\ImportKit\Contracts\ContextAwareRowMapperInterface;
 use Vendor\ImportKit\Contracts\RowCommitterInterface;
 use Vendor\ImportKit\Contracts\RowMapperInterface;
 use Vendor\ImportKit\Contracts\RowParserInterface;
@@ -117,7 +114,7 @@ final class ImportPipelineCustomHeaderTest extends TestCase
             public function makeRowParser(): RowParserInterface
             {
                 return new class() implements RowParserInterface {
-                    public function parse(array $row): array
+                    public function parse(array $row, ImportRunContext $context): array
                     {
                         return $row;
                     }
@@ -127,7 +124,7 @@ final class ImportPipelineCustomHeaderTest extends TestCase
             public function makeRowValidator(): RowValidatorInterface
             {
                 return new class() implements RowValidatorInterface {
-                    public function validate(array $normalizedRow): ValidationResult
+                    public function validate(array $normalizedRow, ImportRunContext $context): ValidationResult
                     {
                         return ValidationResult::ok();
                     }
@@ -137,7 +134,7 @@ final class ImportPipelineCustomHeaderTest extends TestCase
             public function makeRowMapper(): RowMapperInterface
             {
                 return new class() implements RowMapperInterface {
-                    public function map(array $validatedRow): array
+                    public function map(array $validatedRow, ImportRunContext $context): array
                     {
                         return $validatedRow;
                     }
@@ -147,7 +144,7 @@ final class ImportPipelineCustomHeaderTest extends TestCase
             public function makeRowCommitter(): RowCommitterInterface
             {
                 return new class() implements RowCommitterInterface {
-                    public function commit(array $mappedRow): void
+                    public function commit(array $mappedRow, ImportRunContext $context): void
                     {
                     }
                 };
@@ -224,15 +221,10 @@ final class ImportPipelineCustomHeaderTest extends TestCase
             metadata: []
         );
 
-        $validator = new class() implements ContextAwareRowValidatorInterface {
+        $validator = new class() implements RowValidatorInterface {
             public ?int $capturedWorkspaceId = null;
 
-            public function validate(array $normalizedRow): ValidationResult
-            {
-                return ValidationResult::ok();
-            }
-
-            public function validateWithContext(array $normalizedRow, ImportRunContext $context): ValidationResult
+            public function validate(array $normalizedRow, ImportRunContext $context): ValidationResult
             {
                 $this->capturedWorkspaceId = $context->workspaceId;
 
@@ -241,7 +233,7 @@ final class ImportPipelineCustomHeaderTest extends TestCase
         };
 
         $module = new class($validator) implements \Vendor\ImportKit\Contracts\ImportModuleInterface {
-            public function __construct(private readonly ContextAwareRowValidatorInterface $validator)
+            public function __construct(private readonly RowValidatorInterface $validator)
             {
             }
 
@@ -268,7 +260,7 @@ final class ImportPipelineCustomHeaderTest extends TestCase
             public function makeRowParser(): RowParserInterface
             {
                 return new class() implements RowParserInterface {
-                    public function parse(array $row): array
+                    public function parse(array $row, ImportRunContext $context): array
                     {
                         return $row;
                     }
@@ -283,7 +275,7 @@ final class ImportPipelineCustomHeaderTest extends TestCase
             public function makeRowMapper(): RowMapperInterface
             {
                 return new class() implements RowMapperInterface {
-                    public function map(array $validatedRow): array
+                    public function map(array $validatedRow, ImportRunContext $context): array
                     {
                         return $validatedRow;
                     }
@@ -293,7 +285,7 @@ final class ImportPipelineCustomHeaderTest extends TestCase
             public function makeRowCommitter(): RowCommitterInterface
             {
                 return new class() implements RowCommitterInterface {
-                    public function commit(array $mappedRow): void
+                    public function commit(array $mappedRow, ImportRunContext $context): void
                     {
                     }
                 };
@@ -348,17 +340,12 @@ final class ImportPipelineCustomHeaderTest extends TestCase
 
             public function makeRowParser(): RowParserInterface
             {
-                return new class($this->captured) implements ContextAwareRowParserInterface {
+                return new class($this->captured) implements RowParserInterface {
                     public function __construct(private readonly object $captured)
                     {
                     }
 
-                    public function parse(array $row): array
-                    {
-                        return $row;
-                    }
-
-                    public function parseWithContext(array $row, ImportRunContext $context): array
+                    public function parse(array $row, ImportRunContext $context): array
                     {
                         $this->captured->parserWorkspaceId = $context->workspaceId;
                         $row['workspace_id'] = $context->workspaceId;
@@ -371,7 +358,7 @@ final class ImportPipelineCustomHeaderTest extends TestCase
             public function makeRowValidator(): RowValidatorInterface
             {
                 return new class() implements RowValidatorInterface {
-                    public function validate(array $normalizedRow): ValidationResult
+                    public function validate(array $normalizedRow, ImportRunContext $context): ValidationResult
                     {
                         return ValidationResult::ok();
                     }
@@ -380,17 +367,12 @@ final class ImportPipelineCustomHeaderTest extends TestCase
 
             public function makeRowMapper(): RowMapperInterface
             {
-                return new class($this->captured) implements ContextAwareRowMapperInterface {
+                return new class($this->captured) implements RowMapperInterface {
                     public function __construct(private readonly object $captured)
                     {
                     }
 
-                    public function map(array $validatedRow): array
-                    {
-                        return $validatedRow;
-                    }
-
-                    public function mapWithContext(array $validatedRow, ImportRunContext $context): array
+                    public function map(array $validatedRow, ImportRunContext $context): array
                     {
                         $this->captured->mapperWorkspaceId = $context->workspaceId;
                         $validatedRow['_mapped_workspace_id'] = $context->workspaceId;
@@ -402,17 +384,12 @@ final class ImportPipelineCustomHeaderTest extends TestCase
 
             public function makeRowCommitter(): RowCommitterInterface
             {
-                return new class($this->captured) implements \Vendor\ImportKit\Contracts\ContextAwareRowCommitterInterface {
+                return new class($this->captured) implements RowCommitterInterface {
                     public function __construct(private readonly object $captured)
                     {
                     }
 
-                    public function commit(array $mappedRow): void
-                    {
-                        $this->captured->committerWorkspaceId = null;
-                    }
-
-                    public function commitWithContext(array $mappedRow, ImportRunContext $context): void
+                    public function commit(array $mappedRow, ImportRunContext $context): void
                     {
                         $this->captured->committerWorkspaceId = $context->workspaceId;
                     }
@@ -443,4 +420,3 @@ final class ImportPipelineCustomHeaderTest extends TestCase
         $this->assertSame(777, $captured->committerWorkspaceId);
     }
 }
-

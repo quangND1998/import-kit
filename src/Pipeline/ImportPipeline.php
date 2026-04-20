@@ -4,13 +4,11 @@ declare(strict_types=1);
 
 namespace Vendor\ImportKit\Pipeline;
 
+use Illuminate\Support\Facades\Config;
 use RuntimeException;
-use Vendor\ImportKit\Contracts\ContextAwareRowCommitterInterface;
-use Vendor\ImportKit\Contracts\ContextAwareRowMapperInterface;
-use Vendor\ImportKit\Contracts\ContextAwareRowParserInterface;
-use Vendor\ImportKit\Contracts\ContextAwareRowValidatorInterface;
 use Vendor\ImportKit\Contracts\CustomFieldAwareImportModuleInterface;
 use Vendor\ImportKit\Contracts\ImportModuleInterface;
+use Vendor\ImportKit\Contracts\RowParserInterface;
 use Vendor\ImportKit\Contracts\SourceReaderInterface;
 use Vendor\ImportKit\Contracts\TemplateErrorMessageAwareImportModuleInterface;
 use Vendor\ImportKit\DTO\CommitResult;
@@ -22,6 +20,7 @@ use Vendor\ImportKit\DTO\PreviewRowResult;
 use Vendor\ImportKit\DTO\StoredFile;
 use Vendor\ImportKit\DTO\ValidationResult;
 use Vendor\ImportKit\Exceptions\InvalidTemplateException;
+use Vendor\ImportKit\Support\ImportKitTranslator;
 use Vendor\ImportKit\Support\ImportMode;
 use Vendor\ImportKit\Support\RowWindow;
 
@@ -41,109 +40,118 @@ final class ImportPipeline
         bool $validateRows = true,
         int $lineOffset = 0
     ) {
-        $reader->open($file);
-        $headers = $reader->headers();
-        $metadata = $reader->metadata();
-        $templateValidation = $reader->templateValidation();
-        if (!$templateValidation->ok) {
-            $message = $module instanceof TemplateErrorMessageAwareImportModuleInterface
-                ? $module->invalidTemplateMessage()
-                : 'Import template is invalid.';
-
-            throw new InvalidTemplateException($templateValidation->errors, $message);
-        }
-
-        $missingHeaders = array_diff($module->requiredHeaders(), $headers);
-        if ($missingHeaders !== []) {
-            throw new RuntimeException('Missing required headers: ' . implode(', ', $missingHeaders));
-        }
-
+        $context = $runContext ?? ImportRunContext::from(null, null, []);
         $parser = $module->makeRowParser();
         $validator = $module->makeRowValidator();
         $mapper = $module->makeRowMapper();
         $committer = $module->makeRowCommitter();
-        $context = $runContext ?? ImportRunContext::from(null, null, []);
-        $customFieldMap = (array) ($metadata['custom_field_map'] ?? []);
 
-        $line = 1 + max(0, $lineOffset);
-        $summary = [
-            'total_seen' => 0,
-            'ok' => 0,
-            'error' => 0,
-            'skipped_blank' => 0,
-        ];
-        $rows = [];
+        $reader->open($file);
+        try {
+            $headers = $reader->headers();
+            $metadata = $reader->metadata();
+            $templateValidation = $reader->templateValidation();
+            if (!$templateValidation->ok) {
+                $message = $module instanceof TemplateErrorMessageAwareImportModuleInterface
+                    ? $module->invalidTemplateMessage()
+                    : 'Import template is invalid.';
 
-        foreach ($reader->rows($rowWindow) as $row) {
-            $line++;
-            $summary['total_seen']++;
-
-            $normalized = $parser instanceof ContextAwareRowParserInterface
-                ? $parser->parseWithContext($row, $context)
-                : $parser->parse($row);
-            if ($this->isBlankRow($normalized)) {
-                $summary['skipped_blank']++;
-                continue;
+                throw new InvalidTemplateException($templateValidation->errors, $message);
             }
 
-            $validation = $validateRows
-                ? (
-                    $validator instanceof ContextAwareRowValidatorInterface
-                        ? $validator->validateWithContext($normalized, $context)
-                        : $validator->validate($normalized)
-                )
-                : ValidationResult::ok();
-            $customFieldValues = $this->extractCustomFieldValues($normalized, $customFieldMap);
-            if ($validateRows && $module instanceof CustomFieldAwareImportModuleInterface && $customFieldValues !== []) {
-                $customFieldErrors = $module->validateCustomFieldValues($normalized, $customFieldValues, $context);
-                if ($customFieldErrors !== []) {
-                    $validation = ValidationResult::fail(array_merge($validation->errors, $customFieldErrors));
+            $missingHeaders = array_diff($module->requiredHeaders(), $headers);
+            if ($missingHeaders !== []) {
+                throw new RuntimeException(ImportKitTranslator::missingRequiredHeaders(array_values($missingHeaders)));
+            }
+
+            $customFieldMap = (array) ($metadata['custom_field_map'] ?? []);
+
+            $filteredTotalForPagination = null;
+            if ($mode === ImportMode::PREVIEW && $rowWindow !== null) {
+                $filteredTotalForPagination = $this->countNonBlankParsedRows($reader, $parser, $context);
+                $reader->close();
+                $reader->open($file);
+                $metadata = $reader->metadata();
+                $customFieldMap = (array) ($metadata['custom_field_map'] ?? []);
+            }
+
+            $line = 1 + max(0, $lineOffset);
+            $summary = [
+                'total_seen' => 0,
+                'ok' => 0,
+                'error' => 0,
+                'skipped_blank' => 0,
+            ];
+            $rows = [];
+
+            foreach ($reader->rows($rowWindow) as $row) {
+                $line++;
+                $summary['total_seen']++;
+
+                $normalized = $parser->parse($row, $context);
+                if ($this->isBlankRow($normalized)) {
+                    $summary['skipped_blank']++;
+                    continue;
                 }
-            }
-            if (!$validation->ok) {
-                $summary['error']++;
-                if ($mode === ImportMode::PREVIEW) {
-                    $rows[] = new PreviewRowResult($line, 'error', $validation->errors, $normalized);
-                } elseif ($mode === ImportMode::COMMIT) {
-                    $rows[] = new ImportResultRowData($line, 'error', $validation->errors, $normalized);
+
+                $validation = $validateRows
+                    ? $validator->validate($normalized, $context)
+                    : ValidationResult::ok();
+                $customFieldValues = $this->extractCustomFieldValues($normalized, $customFieldMap);
+                if ($validateRows && $module instanceof CustomFieldAwareImportModuleInterface && $customFieldValues !== []) {
+                    $customFieldErrors = $module->validateCustomFieldValues($normalized, $customFieldValues, $context);
+                    if ($customFieldErrors !== []) {
+                        $validation = ValidationResult::fail(array_merge($validation->errors, $customFieldErrors));
+                    }
                 }
-                continue;
-            }
-
-            $mapped = $mapper instanceof ContextAwareRowMapperInterface
-                ? $mapper->mapWithContext($normalized, $context)
-                : $mapper->map($normalized);
-            if ($customFieldValues !== []) {
-                $mapped['custom_field_values'] = array_map(
-                    static fn (CustomFieldValue $value): array => $value->toArray(),
-                    $customFieldValues
-                );
-            }
-            $summary['ok']++;
-
-            if ($mode === ImportMode::COMMIT) {
-                if ($committer instanceof ContextAwareRowCommitterInterface) {
-                    $committer->commitWithContext($mapped, $context);
-                } else {
-                    $committer->commit($mapped);
+                if (!$validation->ok) {
+                    $summary['error']++;
+                    if ($mode === ImportMode::PREVIEW) {
+                        $rows[] = new PreviewRowResult($line, 'error', $validation->errors, $normalized);
+                    } elseif ($mode === ImportMode::COMMIT) {
+                        $rows[] = new ImportResultRowData($line, 'error', $validation->errors, $normalized);
+                    }
+                    continue;
                 }
-                $rows[] = new ImportResultRowData($line, 'ok', [], $normalized, $mapped);
-                continue;
-            }
 
-            $rows[] = new PreviewRowResult($line, 'ok', [], $normalized, $mapped);
+                $mapped = $mapper->map($normalized, $context);
+                if ($customFieldValues !== []) {
+                    $mapped['custom_field_values'] = array_map(
+                        static fn (CustomFieldValue $value): array => $value->toArray(),
+                        $customFieldValues
+                    );
+                }
+                $summary['ok']++;
+
+                if ($mode === ImportMode::COMMIT) {
+                    $committer->commit($mapped, $context);
+                    $rows[] = new ImportResultRowData($line, 'ok', [], $normalized, $mapped);
+                    continue;
+                }
+
+                $rows[] = new PreviewRowResult($line, 'ok', [], $normalized, $mapped);
+            }
+        } finally {
+            $reader->close();
         }
-
-        $reader->close();
 
         if ($mode === ImportMode::COMMIT) {
             return new CommitResult($sessionId, 'completed', $summary, $rows);
         }
 
-        $window = $rowWindow ?? new RowWindow(0, (int) config('import.preview.default_per_page', 20));
+        $window = $rowWindow ?? new RowWindow(0, (int) Config::get('import.preview.default_per_page', 20));
         $page = $window->page();
         $perPage = $window->limit;
-        $filteredTotal = count($rows);
+        if ($rowWindow === null) {
+            $filteredTotal = count($rows);
+            $nextCursor = null;
+        } else {
+            $filteredTotal = $filteredTotalForPagination ?? count($rows);
+            $nextCursor = ($window->offset + count($rows)) < $filteredTotal
+                ? (string) ($window->offset + $perPage)
+                : null;
+        }
+
         return new PreviewResult(
             sessionId: $sessionId,
             kind: $module->kind(),
@@ -152,13 +160,33 @@ final class ImportPipeline
                 'page' => $page,
                 'per_page' => $perPage,
                 'filtered_total' => $filteredTotal,
-                'next_cursor' => $filteredTotal === $perPage ? (string) ($window->offset + $perPage) : null,
+                'next_cursor' => $nextCursor,
             ],
             rows: $rows,
             columnLabels: $module->columnLabels(),
             validated: $validateRows,
             dataSource: 'file'
         );
+    }
+
+    /**
+     * Count logical data rows (non-blank after parse) for the whole file.
+     */
+    private function countNonBlankParsedRows(
+        SourceReaderInterface $reader,
+        RowParserInterface $parser,
+        ImportRunContext $context
+    ): int {
+        $count = 0;
+        foreach ($reader->rows(null) as $row) {
+            $normalized = $parser->parse($row, $context);
+            if ($this->isBlankRow($normalized)) {
+                continue;
+            }
+            ++$count;
+        }
+
+        return $count;
     }
 
     /**

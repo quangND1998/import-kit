@@ -6,9 +6,6 @@ namespace Vendor\ImportKit\Modules\Samples;
 
 use Vendor\ImportKit\Contracts\CustomFieldCatalogAwareImportModuleInterface;
 use Vendor\ImportKit\Contracts\CommitDispatchAwareImportModuleInterface;
-use Vendor\ImportKit\Contracts\ContextAwareRowValidatorInterface;
-use Vendor\ImportKit\Contracts\ContextAwareRowParserInterface;
-use Vendor\ImportKit\Contracts\ContextAwareRowMapperInterface;
 use Vendor\ImportKit\Contracts\HeaderPolicyAwareImportModuleInterface;
 use Vendor\ImportKit\Contracts\TemplateErrorMessageAwareImportModuleInterface;
 use Vendor\ImportKit\Contracts\RowCommitterInterface;
@@ -77,13 +74,6 @@ final class UserImportModuleExample implements
 
     public function activeCustomFields(ImportRunContext $context): array
     {
-        // Example DB lookup by workspace:
-        // $fields = CustomField::query()
-        //     ->where('workspace_id', $context->workspaceId)
-        //     ->where('is_active', true)
-        //     ->get();
-        // return $fields->map(...)->all();
-
         return [
             new CustomFieldDefinition(id: '123', title: 'Thu nhap', dataType: 'NUMBER'),
             new CustomFieldDefinition(id: '124', title: 'Ngay cap nhat', dataType: 'DATE'),
@@ -92,8 +82,6 @@ final class UserImportModuleExample implements
 
     public function commitDispatchOptions(ImportRunContext $context): array
     {
-        // Example dynamic override:
-        // force single mode for tiny imports, use batch for large imports.
         $forceSingle = (bool) ($context->context['force_single_dispatch'] ?? false);
         if ($forceSingle) {
             return [
@@ -112,13 +100,8 @@ final class UserImportModuleExample implements
 
     public function makeRowParser(): RowParserInterface
     {
-        return new class() implements ContextAwareRowParserInterface {
-            public function parse(array $row): array
-            {
-                return $row;
-            }
-
-            public function parseWithContext(array $row, ImportRunContext $context): array
+        return new class() implements RowParserInterface {
+            public function parse(array $row, ImportRunContext $context): array
             {
                 $row['workspace_id'] = $context->workspaceId;
                 $row['tenant_id'] = $context->tenantId;
@@ -130,30 +113,18 @@ final class UserImportModuleExample implements
 
     public function makeRowValidator(): RowValidatorInterface
     {
-        return new class() implements ContextAwareRowValidatorInterface {
-            public function validate(array $normalizedRow): ValidationResult
+        return new class() implements RowValidatorInterface {
+            public function validate(array $normalizedRow, ImportRunContext $context): ValidationResult
             {
                 return ValidationResult::ok();
-            }
-
-            public function validateWithContext(array $normalizedRow, ImportRunContext $context): ValidationResult
-            {
-                // Example: workspace-aware validation logic.
-                // You can query DB using $context->workspaceId for tenant-specific constraints.
-                return $this->validate($normalizedRow);
             }
         };
     }
 
     public function makeRowMapper(): RowMapperInterface
     {
-        return new class() implements ContextAwareRowMapperInterface {
-            public function map(array $validatedRow): array
-            {
-                return $validatedRow;
-            }
-
-            public function mapWithContext(array $validatedRow, ImportRunContext $context): array
+        return new class() implements RowMapperInterface {
+            public function map(array $validatedRow, ImportRunContext $context): array
             {
                 $validatedRow['_context'] = [
                     'workspace_id' => $context->workspaceId,
@@ -168,10 +139,9 @@ final class UserImportModuleExample implements
     public function makeRowCommitter(): RowCommitterInterface
     {
         return new class() implements RowCommitterInterface {
-            public function commit(array $mappedRow): void
+            public function commit(array $mappedRow, ImportRunContext $context): void
             {
             }
         };
     }
 }
-

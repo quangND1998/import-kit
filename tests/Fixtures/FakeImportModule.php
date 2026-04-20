@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Vendor\ImportKit\Tests\Fixtures;
 
-use Vendor\ImportKit\Contracts\ContextAwareRowCommitterInterface;
 use Vendor\ImportKit\Contracts\CustomFieldAwareImportModuleInterface;
 use Vendor\ImportKit\Contracts\RowCommitterInterface;
 use Vendor\ImportKit\Contracts\RowMapperInterface;
@@ -46,7 +45,7 @@ final class FakeImportModule implements CustomFieldAwareImportModuleInterface
     public function makeRowParser(): RowParserInterface
     {
         return new class() implements RowParserInterface {
-            public function parse(array $row): array
+            public function parse(array $row, ImportRunContext $context): array
             {
                 return $row;
             }
@@ -56,7 +55,7 @@ final class FakeImportModule implements CustomFieldAwareImportModuleInterface
     public function makeRowValidator(): RowValidatorInterface
     {
         return new class() implements RowValidatorInterface {
-            public function validate(array $normalizedRow): ValidationResult
+            public function validate(array $normalizedRow, ImportRunContext $context): ValidationResult
             {
                 return ValidationResult::ok();
             }
@@ -66,7 +65,7 @@ final class FakeImportModule implements CustomFieldAwareImportModuleInterface
     public function makeRowMapper(): RowMapperInterface
     {
         return new class() implements RowMapperInterface {
-            public function map(array $validatedRow): array
+            public function map(array $validatedRow, ImportRunContext $context): array
             {
                 return $validatedRow;
             }
@@ -75,15 +74,13 @@ final class FakeImportModule implements CustomFieldAwareImportModuleInterface
 
     public function makeRowCommitter(): RowCommitterInterface
     {
-        return $this->committer ?? new class() implements ContextAwareRowCommitterInterface {
+        return $this->committer ?? new class() implements RowCommitterInterface {
+            /**
+             * @var array<int, array<string, mixed>>
+             */
             public array $committed = [];
 
-            public function commit(array $mappedRow): void
-            {
-                $this->committed[] = ['row' => $mappedRow, 'workspace_id' => null];
-            }
-
-            public function commitWithContext(array $mappedRow, ImportRunContext $context): void
+            public function commit(array $mappedRow, ImportRunContext $context): void
             {
                 $this->committed[] = [
                     'row' => $mappedRow,
@@ -116,4 +113,3 @@ final class FakeImportModule implements CustomFieldAwareImportModuleInterface
         return $errors;
     }
 }
-

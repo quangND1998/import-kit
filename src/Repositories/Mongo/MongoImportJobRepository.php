@@ -115,6 +115,14 @@ final class MongoImportJobRepository implements ImportJobRepositoryInterface
             return;
         }
 
+        $lines = array_values(array_unique(array_map(
+            static fn (ImportJobResultRowData $row): int => $row->line,
+            $rows
+        )));
+        if ($lines !== []) {
+            $this->resultRowsQuery()->where('job_id', $id)->whereIn('line', $lines)->delete();
+        }
+
         $now = now()->toDateTimeString();
         $payload = array_map(
             static fn (ImportJobResultRowData $row): array => [

@@ -204,6 +204,22 @@ final class EloquentPreviewSessionRepository implements PreviewSessionStoreInter
         ];
     }
 
+    public function deleteExpiredPreviewSessions(): int
+    {
+        $ids = ImportPreviewSession::query()
+            ->where('expires_at', '<', CarbonImmutable::now())
+            ->pluck('id')
+            ->all();
+        if ($ids === []) {
+            return 0;
+        }
+
+        ImportPreviewSnapshotRow::query()->whereIn('session_id', $ids)->delete();
+        $deleted = ImportPreviewSession::query()->whereIn('id', $ids)->delete();
+
+        return (int) $deleted;
+    }
+
     /**
      * @param array<mixed> $value
      */

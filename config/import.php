@@ -130,12 +130,17 @@ return [
     | - single: one RunImportJob handles the whole import (legacy behavior)
     | - bus_batch: split import into chunked RunImportJob(s) via Laravel Bus batch
     |
+    | precount_logical_rows (bus_batch):
+    | - true (default): scan file once to count non-blank rows before dispatching chunks (accurate chunk_count).
+    | - false: dispatch first chunk only, then chain further chunks until EOF (faster submit, no full-file pre-scan).
+    |
     */
     'commit' => [
         'dispatch_mode' => env('IMPORT_COMMIT_DISPATCH_MODE', 'single'),
         'batch' => [
             'chunk_size' => (int) env('IMPORT_COMMIT_BATCH_CHUNK_SIZE', 500),
             'allow_failures' => (bool) env('IMPORT_COMMIT_BATCH_ALLOW_FAILURES', false),
+            'precount_logical_rows' => (bool) env('IMPORT_COMMIT_BATCH_PRECOUNT_LOGICAL_ROWS', true),
         ],
     ],
 

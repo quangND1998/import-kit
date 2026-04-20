@@ -9,6 +9,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Config;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Carbon\CarbonImmutable;
 use Throwable;
@@ -16,11 +17,13 @@ use Vendor\ImportKit\Contracts\ImportJobRepositoryInterface;
 use Vendor\ImportKit\Contracts\ImportRegistryInterface;
 use Vendor\ImportKit\Contracts\PreviewSessionStoreInterface;
 use Vendor\ImportKit\Contracts\SourceReaderResolverInterface;
+use Vendor\ImportKit\DTO\ImportJobData;
 use Vendor\ImportKit\DTO\ImportJobErrorData;
 use Vendor\ImportKit\DTO\ImportJobResultRowData;
 use Vendor\ImportKit\DTO\ImportRunContext;
 use Vendor\ImportKit\DTO\StoredFile;
 use Vendor\ImportKit\Pipeline\ImportPipeline;
+use Vendor\ImportKit\Support\ImportKitTranslator;
 use Vendor\ImportKit\Support\ImportMode;
 use Vendor\ImportKit\DTO\CommitResult;
 
@@ -36,7 +39,8 @@ final class RunImportJob implements ShouldQueue
         public readonly ?int $chunkLimit = null,
         public readonly bool $finalizeAfterRun = true,
         public readonly bool $cleanupSourceOnSuccess = true,
-        public readonly bool $rethrowOnFailure = false
+        public readonly bool $rethrowOnFailure = false,
+        public readonly bool $chainRemainingChunks = false
     ) {
     }
 
@@ -46,8 +50,7 @@ final class RunImportJob implements ShouldQueue
         ImportRegistryInterface $registry,
         SourceReaderResolverInterface $sourceReaderResolver,
         ImportPipeline $pipeline
-    ): void
-    {
+    ): void {
         $job = $jobs->find($this->jobId);
         if ($job === null) {
             return;
@@ -99,7 +102,7 @@ final class RunImportJob implements ShouldQueue
                 lineOffset: $this->chunkOffset ?? 0
             );
             if (!$result instanceof CommitResult) {
-                throw new \RuntimeException('Commit pipeline returned invalid result.');
+                throw new \RuntimeException(ImportKitTranslator::invalidCommitResult());
             }
 
             $rows = $result->rows ?? [];
@@ -134,6 +137,34 @@ final class RunImportJob implements ShouldQueue
                 'error_rows' => (int) ($result->summary['error'] ?? 0),
                 'skipped_blank_rows' => (int) ($result->summary['skipped_blank'] ?? 0),
             ]);
+
+            if (!$this->finalizeAfterRun && $this->chainRemainingChunks
+                && $this->chunkOffset !== null && $this->chunkLimit !== null) {
+                $seen = (int) ($result->summary['total_seen'] ?? 0);
+                if ($seen === 0) {
+                    Queue::push(new FinalizeImportJob($this->jobId, $this->cleanupSourceOnSuccess));
+
+                    return;
+                }
+                if ($seen >= $this->chunkLimit) {
+                    Queue::push(new self(
+                        jobId: $this->jobId,
+                        chunkOffset: $this->chunkOffset + $this->chunkLimit,
+                        chunkLimit: $this->chunkLimit,
+                        finalizeAfterRun: false,
+                        cleanupSourceOnSuccess: false,
+                        rethrowOnFailure: $this->rethrowOnFailure,
+                        chainRemainingChunks: true
+                    ));
+
+                    return;
+                }
+
+                Queue::push(new FinalizeImportJob($this->jobId, $this->cleanupSourceOnSuccess));
+
+                return;
+            }
+
             if ($this->finalizeAfterRun) {
                 $fresh = $jobs->find($this->jobId);
                 $summary = $fresh !== null ? [
@@ -162,7 +193,10 @@ final class RunImportJob implements ShouldQueue
                     field: null,
                     code: 'job_exception',
                     message: $throwable->getMessage(),
-                    payload: ['trace' => $throwable->getTraceAsString()]
+                    payload: array_merge(
+                        ['trace' => $throwable->getTraceAsString()],
+                        $this->jobErrorDebugPayload($job)
+                    )
                 ),
             ]);
 
@@ -178,6 +212,21 @@ final class RunImportJob implements ShouldQueue
                 throw $throwable;
             }
         }
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function jobErrorDebugPayload(ImportJobData $job): array
+    {
+        return [
+            'session_id' => $job->sessionId,
+            'kind' => $job->kind,
+            'tenant_id' => $job->tenantId,
+            'workspace_id' => $job->workspaceId,
+            'chunk_offset' => $this->chunkOffset,
+            'chunk_limit' => $this->chunkLimit,
+        ];
     }
 
     private function rowWindow(): ?\Vendor\ImportKit\Support\RowWindow

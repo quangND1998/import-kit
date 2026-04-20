@@ -12,6 +12,7 @@ use Vendor\ImportKit\DTO\ImportRunContext;
 use Vendor\ImportKit\DTO\PreviewResult;
 use Vendor\ImportKit\DTO\StoredFile;
 use Vendor\ImportKit\Pipeline\ImportPipeline;
+use Vendor\ImportKit\Support\ImportKitTranslator;
 use Vendor\ImportKit\Support\ImportMode;
 use Vendor\ImportKit\Support\RowWindow;
 
@@ -49,7 +50,7 @@ final class ImportPreviewService
         );
 
         if (!$result instanceof PreviewResult) {
-            throw new \RuntimeException('Preview pipeline returned invalid result.');
+            throw new \RuntimeException(ImportKitTranslator::invalidPreviewResult());
         }
 
         $decorated = new PreviewResult(

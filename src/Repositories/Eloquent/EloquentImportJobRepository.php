@@ -116,7 +116,7 @@ final class EloquentImportJobRepository implements ImportJobRepositoryInterface
         }
 
         $now = CarbonImmutable::now();
-        ImportJobResultRow::query()->insert(array_map(
+        $rowsPayload = array_map(
             fn (ImportJobResultRowData $row): array => [
                 'job_id' => $id,
                 'line' => $row->line,
@@ -126,7 +126,12 @@ final class EloquentImportJobRepository implements ImportJobRepositoryInterface
                 'updated_at' => $now,
             ],
             $rows
-        ));
+        );
+        ImportJobResultRow::query()->upsert(
+            $rowsPayload,
+            ['job_id', 'line'],
+            ['status', 'payload', 'updated_at']
+        );
     }
 
     public function appendErrors(string $id, array $errors): void
@@ -136,11 +141,11 @@ final class EloquentImportJobRepository implements ImportJobRepositoryInterface
         }
 
         $now = CarbonImmutable::now();
-        ImportJobError::query()->insert(array_map(
+        $errorsPayload = array_map(
             fn (ImportJobErrorData $error): array => [
                 'job_id' => $id,
-                'line' => $error->line,
-                'field' => $error->field,
+                'line' => $error->line ?? -1,
+                'field' => $error->field ?? '',
                 'code' => $error->code,
                 'message' => $error->message,
                 'payload' => $this->encodeJson($error->payload),
@@ -148,7 +153,12 @@ final class EloquentImportJobRepository implements ImportJobRepositoryInterface
                 'updated_at' => $now,
             ],
             $errors
-        ));
+        );
+        ImportJobError::query()->upsert(
+            $errorsPayload,
+            ['job_id', 'line', 'field', 'code'],
+            ['message', 'payload', 'updated_at']
+        );
     }
 
     public function getResultRows(string $id, ?string $status = null, ?RowWindow $rowWindow = null): array

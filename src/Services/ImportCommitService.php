@@ -75,64 +75,99 @@ final class ImportCommitService
         if ($dispatchMode === 'bus_batch') {
             $chunkSize = max(1, (int) ($dispatchOverrides['batch']['chunk_size'] ?? Config::get('import.commit.batch.chunk_size', 500)));
             $allowFailures = (bool) ($dispatchOverrides['batch']['allow_failures'] ?? Config::get('import.commit.batch.allow_failures', false));
-            $chunkCount = $this->countChunks($session, $context, $chunkSize);
-            if ($chunkCount <= 1) {
-                Queue::push(new RunImportJob($job->id));
+            $precount = (bool) Config::get('import.commit.batch.precount_logical_rows', true);
+
+            if (!$precount) {
+                Queue::push(new RunImportJob(
+                    jobId: $job->id,
+                    chunkOffset: 0,
+                    chunkLimit: $chunkSize,
+                    finalizeAfterRun: false,
+                    cleanupSourceOnSuccess: false,
+                    rethrowOnFailure: true,
+                    chainRemainingChunks: true
+                ));
                 $this->jobs->update($job->id, [
                     'summary' => [
                         'dispatch_mode' => 'bus_batch',
                         'chunk_size' => $chunkSize,
-                        'chunk_count' => 1,
+                        'allow_failures' => $allowFailures,
+                        'precount_logical_rows' => false,
+                        'chunk_chaining' => true,
                     ],
                 ]);
             } else {
-                $chunkJobs = [];
-                for ($index = 0; $index < $chunkCount; $index++) {
-                    $offset = $index * $chunkSize;
-                    $chunkJobs[] = new RunImportJob(
-                        jobId: $job->id,
-                        chunkOffset: $offset,
-                        chunkLimit: $chunkSize,
-                        finalizeAfterRun: false,
-                        cleanupSourceOnSuccess: false,
-                        rethrowOnFailure: true
-                    );
+                $chunkCount = $this->countChunks($session, $context, $chunkSize);
+                if ($chunkCount <= 1) {
+                    Queue::push(new RunImportJob($job->id));
+                    $this->jobs->update($job->id, [
+                        'summary' => [
+                            'dispatch_mode' => 'bus_batch',
+                            'chunk_size' => $chunkSize,
+                            'chunk_count' => 1,
+                            'precount_logical_rows' => true,
+                        ],
+                    ]);
+                } else {
+                    $chunkJobs = [];
+                    for ($index = 0; $index < $chunkCount; $index++) {
+                        $offset = $index * $chunkSize;
+                        $chunkJobs[] = new RunImportJob(
+                            jobId: $job->id,
+                            chunkOffset: $offset,
+                            chunkLimit: $chunkSize,
+                            finalizeAfterRun: false,
+                            cleanupSourceOnSuccess: false,
+                            rethrowOnFailure: true,
+                            chainRemainingChunks: false
+                        );
+                    }
+
+                    $batch = Bus::batch($chunkJobs)
+                        ->allowFailures($allowFailures)
+                        ->then(static function () use ($job): void {
+                            Queue::push(new FinalizeImportJob($job->id));
+                        })
+                        ->catch(static function (Throwable $throwable) use ($job): void {
+                            $repo = Container::getInstance()->make(ImportJobRepositoryInterface::class);
+                            $fresh = $repo->find($job->id);
+                            $repo->appendErrors($job->id, [
+                                new ImportJobErrorData(
+                                    jobId: $job->id,
+                                    line: null,
+                                    field: null,
+                                    code: 'batch_exception',
+                                    message: $throwable->getMessage(),
+                                    payload: array_merge(
+                                        ['trace' => $throwable->getTraceAsString()],
+                                        [
+                                            'session_id' => $fresh?->sessionId,
+                                            'kind' => $fresh?->kind,
+                                            'tenant_id' => $fresh?->tenantId,
+                                            'workspace_id' => $fresh?->workspaceId,
+                                        ]
+                                    )
+                                ),
+                            ]);
+                            $repo->update($job->id, [
+                                'status' => 'failed',
+                                'summary' => ['message' => $throwable->getMessage()],
+                                'finished_at' => CarbonImmutable::now(),
+                            ]);
+                        })
+                        ->dispatch();
+
+                    $this->jobs->update($job->id, [
+                        'summary' => [
+                            'dispatch_mode' => 'bus_batch',
+                            'batch_id' => $batch->id,
+                            'chunk_size' => $chunkSize,
+                            'allow_failures' => $allowFailures,
+                            'chunk_count' => $chunkCount,
+                            'precount_logical_rows' => true,
+                        ],
+                    ]);
                 }
-
-                $batch = Bus::batch($chunkJobs)
-                    ->allowFailures($allowFailures)
-                    ->then(static function () use ($job): void {
-                        Queue::push(new FinalizeImportJob($job->id));
-                    })
-                    ->catch(static function (Throwable $throwable) use ($job): void {
-                        $repo = Container::getInstance()->make(ImportJobRepositoryInterface::class);
-                        $repo->appendErrors($job->id, [
-                            new ImportJobErrorData(
-                                jobId: $job->id,
-                                line: null,
-                                field: null,
-                                code: 'batch_exception',
-                                message: $throwable->getMessage(),
-                                payload: ['trace' => $throwable->getTraceAsString()]
-                            ),
-                        ]);
-                        $repo->update($job->id, [
-                            'status' => 'failed',
-                            'summary' => ['message' => $throwable->getMessage()],
-                            'finished_at' => CarbonImmutable::now(),
-                        ]);
-                    })
-                    ->dispatch();
-
-                $this->jobs->update($job->id, [
-                    'summary' => [
-                        'dispatch_mode' => 'bus_batch',
-                        'batch_id' => $batch->id,
-                        'chunk_size' => $chunkSize,
-                        'allow_failures' => $allowFailures,
-                        'chunk_count' => $chunkCount,
-                    ],
-                ]);
             }
         } else {
             Queue::push(new RunImportJob($job->id));
@@ -175,22 +210,38 @@ final class ImportCommitService
     {
         $module = $this->registry->get($kind);
         $reader = $this->sourceReaderResolver->resolve($file, $kind, $module, $context);
+        $parser = $module->makeRowParser();
 
         $reader->open($file);
         try {
             $count = 0;
             foreach ($reader->rows() as $row) {
-                if ($this->isBlankRow((array) $row)) {
+                $normalized = $parser->parse((array) $row, $context);
+                if ($this->isBlankParsedRow($normalized)) {
                     continue;
                 }
 
-                $count++;
+                ++$count;
             }
         } finally {
             $reader->close();
         }
 
         return $count;
+    }
+
+    /**
+     * @param array<string, mixed> $normalized
+     */
+    private function isBlankParsedRow(array $normalized): bool
+    {
+        foreach ($normalized as $value) {
+            if ($value !== null && $value !== '') {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private function resolveRunContext(PreviewSessionData $session, ?ImportRunContext $runContext): ImportRunContext
@@ -245,20 +296,6 @@ final class ImportCommitService
         }
 
         return $normalized;
-    }
-
-    /**
-     * @param array<string, mixed> $row
-     */
-    private function isBlankRow(array $row): bool
-    {
-        foreach ($row as $value) {
-            if ($value !== null && trim((string) $value) !== '') {
-                return false;
-            }
-        }
-
-        return true;
     }
 
     private function ensureSubmitStorage(PreviewSessionData $session, ?ImportRunContext $runContext): PreviewSessionData

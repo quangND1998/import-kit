@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Vendor\ImportKit;
 
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Config;
 use Illuminate\Support\ServiceProvider;
 use Vendor\ImportKit\Contracts\FileStoreInterface;
 use Vendor\ImportKit\Contracts\HeaderPolicyResolverInterface;
@@ -34,6 +35,7 @@ use Vendor\ImportKit\Services\ImportResultService;
 use Vendor\ImportKit\Services\ImportJobStatusService;
 use Vendor\ImportKit\Services\ImportPreviewService;
 use Vendor\ImportKit\Services\ImportResponseFormatter;
+use Vendor\ImportKit\Console\PruneExpiredImportPreviewSessionsCommand;
 
 final class ImportKitServiceProvider extends ServiceProvider
 {
@@ -66,7 +68,7 @@ final class ImportKitServiceProvider extends ServiceProvider
         $this->app->singleton(ImportResultExportService::class);
 
         $this->app->bind(PreviewSessionStoreInterface::class, function (): PreviewSessionStoreInterface {
-            if (config('import.storage_driver') === 'mongo') {
+            if (Config::get('import.storage_driver') === 'mongo') {
                 return new MongoPreviewSessionRepository();
             }
 
@@ -74,7 +76,7 @@ final class ImportKitServiceProvider extends ServiceProvider
         });
 
         $this->app->bind(ImportJobRepositoryInterface::class, function (): ImportJobRepositoryInterface {
-            if (config('import.storage_driver') === 'mongo') {
+            if (Config::get('import.storage_driver') === 'mongo') {
                 return new MongoImportJobRepository();
             }
 
@@ -88,6 +90,8 @@ final class ImportKitServiceProvider extends ServiceProvider
             return;
         }
 
+        $this->loadTranslationsFrom(__DIR__ . '/../lang', 'import-kit');
+
         if (File::isDirectory(__DIR__ . '/../database/migrations')) {
             $this->loadMigrationsFrom(__DIR__ . '/../database/migrations');
         }
@@ -99,5 +103,17 @@ final class ImportKitServiceProvider extends ServiceProvider
         $this->publishes([
             __DIR__ . '/../database/migrations/' => database_path('migrations'),
         ], 'import-kit-migrations');
+
+        $this->publishes([
+            __DIR__ . '/../lang' => (function_exists('lang_path')
+                ? lang_path('vendor/import-kit')
+                : resource_path('lang/vendor/import-kit')),
+        ], 'import-kit-lang');
+
+        if ($this->app->runningInConsole()) {
+            $this->commands([
+                PruneExpiredImportPreviewSessionsCommand::class,
+            ]);
+        }
     }
 }
