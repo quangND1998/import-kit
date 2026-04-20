@@ -578,6 +578,12 @@ Có.
 - `strictCoreColumns` compare exact string.
 - Cần đảm bảo text trong file khớp 100%.
 
+### Q2b: Chuẩn hóa header không dấu (ASCII key)?
+
+Đặt `normalize_mode => 'snake_unaccent'` trong `HeaderPolicy` (hoặc config fallback).
+File Excel vẫn có thể ghi tiêu đề tiếng Việt có dấu; key trong `requiredHeaders` / `module.requiredHeaders()` là dạng không dấu + underscore (ví dụ `ma_nhan_vien`).
+`strict_core_columns` vẫn đòi text trong ô khớp đúng `expected_label` (nếu bạn truyền label có dấu thì file phải có dấu giống vậy).
+
 ### Q3: Tôi không muốn config `kinds` trong `import.php`?
 
 Đúng.

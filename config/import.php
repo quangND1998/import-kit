@@ -173,7 +173,7 @@ return [
     | - required_headers: normalized keys expected in parsed header_map
     | - custom_field_start_column: first custom field column (1-based)
     | - custom_field_pattern: regex to extract customFieldId (named group "id")
-    | - normalize_mode: "snake" (default) or "raw"
+    | - normalize_mode: "snake" (default), "raw", or "snake_unaccent" (ASCII-ish keys, no diacritics)
     |
     */
     'header' => [

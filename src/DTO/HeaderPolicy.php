@@ -21,6 +21,7 @@ final class HeaderPolicy
         public readonly array $strictCoreColumns = [],
         public readonly ?int $customFieldStartColumn = null,
         public readonly string $customFieldPattern = '/\|\s*(?<id>[A-Za-z0-9_-]+)\s*$/',
+        /** @var 'snake'|'raw'|'snake_unaccent' */
         public readonly string $normalizeMode = 'snake'
     ) {
         if ($this->headerRowIndex < 1) {

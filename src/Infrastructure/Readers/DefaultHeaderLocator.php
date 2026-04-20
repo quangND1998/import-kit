@@ -8,6 +8,7 @@ use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 use Vendor\ImportKit\Contracts\HeaderLocatorInterface;
 use Vendor\ImportKit\DTO\TemplateValidationResult;
+use Vendor\ImportKit\Support\HeaderLabelNormalization;
 
 final class DefaultHeaderLocator implements HeaderLocatorInterface
 {
@@ -24,7 +25,7 @@ final class DefaultHeaderLocator implements HeaderLocatorInterface
         $headerMap = [];
         for ($columnIndex = 1; $columnIndex <= $highestColumnIndex; ++$columnIndex) {
             $raw = $sheet->getCell(Coordinate::stringFromColumnIndex($columnIndex) . $headerRow)->getValue();
-            $key = $this->normalizeHeader($raw);
+            $key = HeaderLabelNormalization::normalize((string) ($raw ?? ''), 'snake');
             if ($key !== '') {
                 $headerMap[$key] = $columnIndex;
             }
@@ -43,14 +44,4 @@ final class DefaultHeaderLocator implements HeaderLocatorInterface
         return $this->templateValidation;
     }
 
-    private function normalizeHeader(mixed $raw): string
-    {
-        if ($raw === null) {
-            return '';
-        }
-
-        $normalized = strtolower(trim((string) $raw));
-
-        return str_replace([' ', '-'], '_', $normalized);
-    }
 }

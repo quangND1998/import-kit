@@ -14,6 +14,7 @@ use Vendor\ImportKit\DTO\TemplateValidationError;
 use Vendor\ImportKit\DTO\TemplateValidationResult;
 use Vendor\ImportKit\DTO\HeaderPolicy;
 use Vendor\ImportKit\DTO\CustomFieldDefinition;
+use Vendor\ImportKit\Support\HeaderLabelNormalization;
 
 final class ConfigurableHeaderLocator implements HeaderLocatorInterface
 {
@@ -151,12 +152,7 @@ final class ConfigurableHeaderLocator implements HeaderLocatorInterface
 
     private function normalizeHeader(string $label, string $mode): string
     {
-        $normalized = strtolower(trim($label));
-        if ($mode === 'raw') {
-            return $normalized;
-        }
-
-        return str_replace([' ', '-'], '_', $normalized);
+        return HeaderLabelNormalization::normalize($label, $mode);
     }
 
     private function extractCustomFieldId(string $label, string $pattern): ?string
