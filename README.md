@@ -403,6 +403,8 @@ $result = $service->preview(
 );
 ```
 
+Nếu `sessionId` rỗng (`''`) và có truyền `file`, package sẽ tự tạo preview session mới rồi trả về `import_session_id` trong kết quả preview.
+
 ### 9.3 Re-preview bằng `sessionId` (không cần truyền file lại)
 
 `preview()` hỗ trợ `file` nullable:

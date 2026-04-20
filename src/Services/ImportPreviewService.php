@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Vendor\ImportKit\Services;
 
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Config;
+use Illuminate\Support\Str;
 use Vendor\ImportKit\Contracts\FileStoreInterface;
 use Vendor\ImportKit\Contracts\ImportRegistryInterface;
 use Vendor\ImportKit\Contracts\PreviewSessionStoreInterface;
@@ -40,9 +42,10 @@ final class ImportPreviewService
         ?RowWindow $rowWindow = null,
         bool $validate = true
     ): PreviewResult {
-        $session = $this->sessions->find($sessionId);
+        $requestedSessionId = trim($sessionId);
+        $session = $requestedSessionId !== '' ? $this->sessions->find($requestedSessionId) : null;
         if ($session instanceof PreviewSessionData && $session->kind !== $kind) {
-            throw new \RuntimeException("Session '{$sessionId}' kind '{$session->kind}' does not match preview kind '{$kind}'.");
+            throw new \RuntimeException("Session '{$requestedSessionId}' kind '{$session->kind}' does not match preview kind '{$kind}'.");
         }
 
         $resolvedContext = $runContext;
@@ -67,17 +70,26 @@ final class ImportPreviewService
                 throw new \InvalidArgumentException('preview $file must be null, StoredFile, or Illuminate\\Http\\UploadedFile.');
             }
             if (!$session instanceof PreviewSessionData) {
-                throw new \RuntimeException("Import preview session '{$sessionId}' not found.");
+                throw new \RuntimeException("Import preview session '{$requestedSessionId}' not found.");
             }
             $resolvedFile = $this->storedFileFromSession($session);
             $resolvedContext ??= $session->runContext();
         }
 
+        if (!$session instanceof PreviewSessionData) {
+            if ($requestedSessionId !== '') {
+                throw new \RuntimeException("Import preview session '{$requestedSessionId}' not found.");
+            }
+            $session = $this->createPreviewSession($kind, $resolvedFile, $resolvedContext);
+            $requestedSessionId = $session->id;
+        }
+
+        $resolvedContext ??= $session->runContext();
         $module = $this->registry->get($kind);
         $resolvedReader = $reader ?? $this->sourceReaderResolver->resolve($resolvedFile, $kind, $module, $resolvedContext);
         $result = $this->pipeline->run(
             ImportMode::PREVIEW,
-            $sessionId,
+            $session->id,
             $module,
             $resolvedFile,
             $resolvedReader,
@@ -102,7 +114,7 @@ final class ImportPreviewService
         );
 
         $this->sessions->savePreviewSnapshot(
-            $sessionId,
+            $session->id,
             array_map(static fn ($row): array => $row->toArray(), $decorated->rows),
             $decorated->columnLabels,
             [
@@ -152,5 +164,27 @@ final class ImportPreviewService
     private function isUploadedFile(mixed $file): bool
     {
         return is_object($file) && is_a($file, 'Illuminate\Http\UploadedFile');
+    }
+
+    private function createPreviewSession(string $kind, StoredFile $file, ?ImportRunContext $runContext): PreviewSessionData
+    {
+        $context = $runContext?->context ?? [];
+        $context['disk'] = $file->disk;
+        $context['file_handle'] = $file->handle;
+        $context['file_path'] = $file->path;
+
+        $expiresMinutes = max(1, (int) Config::get('import.preview.expires_minutes', 120));
+        $session = new PreviewSessionData(
+            id: (string) Str::uuid(),
+            kind: $kind,
+            fileHandle: $file->handle,
+            tenantId: $runContext?->tenantId,
+            workspaceId: $runContext?->workspaceId,
+            context: $context,
+            status: 'uploaded',
+            expiresAt: CarbonImmutable::now()->addMinutes($expiresMinutes)
+        );
+
+        return $this->sessions->create($session);
     }
 }
