@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Vendor\ImportKit\Services;
 
 use Illuminate\Support\Facades\Config;
+use Vendor\ImportKit\Contracts\FileStoreInterface;
 use Vendor\ImportKit\Contracts\ImportRegistryInterface;
 use Vendor\ImportKit\Contracts\PreviewSessionStoreInterface;
 use Vendor\ImportKit\Contracts\SourceReaderInterface;
@@ -25,14 +26,15 @@ final class ImportPreviewService
         private readonly ImportPipeline $pipeline,
         private readonly ColumnLabelService $columnLabelService,
         private readonly PreviewSessionStoreInterface $sessions,
-        private readonly SourceReaderResolverInterface $sourceReaderResolver
+        private readonly SourceReaderResolverInterface $sourceReaderResolver,
+        private readonly FileStoreInterface $fileStore
     ) {
     }
 
     public function preview(
         string $kind,
         string $sessionId,
-        ?StoredFile $file = null,
+        mixed $file = null,
         ?ImportRunContext $runContext = null,
         ?SourceReaderInterface $reader = null,
         ?RowWindow $rowWindow = null,
@@ -44,12 +46,26 @@ final class ImportPreviewService
         }
 
         $resolvedContext = $runContext;
-        if ($file instanceof StoredFile) {
+        if ($this->isUploadedFile($file)) {
+            /** @var \Illuminate\Http\UploadedFile $file */
+            $storedFile = $this->fileStore->putUploadedFile($file, [
+                'tenant_id' => $runContext?->tenantId,
+                'workspace_id' => $runContext?->workspaceId,
+                'context' => $runContext?->context ?? [],
+            ]);
+            if ($session instanceof PreviewSessionData) {
+                $this->syncSessionFile($session, $storedFile, $runContext);
+            }
+            $resolvedFile = $storedFile;
+        } elseif ($file instanceof StoredFile) {
             if ($session instanceof PreviewSessionData) {
                 $this->syncSessionFile($session, $file, $runContext);
             }
             $resolvedFile = $file;
         } else {
+            if ($file !== null) {
+                throw new \InvalidArgumentException('preview $file must be null, StoredFile, or Illuminate\\Http\\UploadedFile.');
+            }
             if (!$session instanceof PreviewSessionData) {
                 throw new \RuntimeException("Import preview session '{$sessionId}' not found.");
             }
@@ -131,5 +147,10 @@ final class ImportPreviewService
         }
 
         $this->sessions->updateFileContextAndStatus($session->id, $file->handle, $context, 'uploaded');
+    }
+
+    private function isUploadedFile(mixed $file): bool
+    {
+        return is_object($file) && is_a($file, 'Illuminate\Http\UploadedFile');
     }
 }

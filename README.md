@@ -391,6 +391,18 @@ $result = $service->preview(
 );
 ```
 
+Hoặc truyền thẳng `UploadedFile` từ request:
+
+```php
+$result = $service->preview(
+    kind: 'user_import',
+    sessionId: $sessionId,
+    file: $request->file('file'),
+    runContext: ImportRunContext::from(tenantId: 10, workspaceId: 99, context: []),
+    rowWindow: RowWindow::fromPage(1, 20)
+);
+```
+
 ### 9.3 Re-preview bằng `sessionId` (không cần truyền file lại)
 
 `preview()` hỗ trợ `file` nullable:
