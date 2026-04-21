@@ -135,24 +135,13 @@ final class ImportPreviewService
             static fn ($row): bool => $row->status === $resolvedStatus
         ));
 
-        $filteredSummary = $decorated->summary;
-        $filteredSummary['total_seen'] = count($filteredRows);
-        $filteredSummary['valid'] = count(array_filter(
-            $filteredRows,
-            static fn ($row): bool => $row->status === 'ok'
-        ));
-        $filteredSummary['invalid'] = count(array_filter(
-            $filteredRows,
-            static fn ($row): bool => $row->status === 'error'
-        ));
-
         $filteredPagination = $decorated->pagination;
         $filteredPagination['filtered_total'] = count($filteredRows);
 
         return new PreviewResult(
             sessionId: $decorated->sessionId,
             kind: $decorated->kind,
-            summary: $filteredSummary,
+            summary: $decorated->summary,
             pagination: $filteredPagination,
             rows: $filteredRows,
             columnLabels: $decorated->columnLabels,

@@ -42,7 +42,7 @@ final class PreviewResult
             pagination: [
                 'page' => (int) ($this->pagination['page'] ?? 1),
                 'per_page' => (int) ($this->pagination['per_page'] ?? 20),
-                'filtered_total' => (int) ($this->summary['total_seen'] ?? count($rows)),
+                'filtered_total' => (int) ($this->pagination['filtered_total'] ?? $this->summary['total_seen'] ?? count($rows)),
                 'next_cursor' => $this->pagination['next_cursor'] ?? null,
             ],
             columnLabels: $this->columnLabels,
@@ -50,6 +50,8 @@ final class PreviewResult
                 'validated' => $this->validated,
                 'source' => $this->dataSource,
                 'skipped' => (int) ($this->summary['skipped_blank'] ?? 0),
+                'overall_ok_rows' => (int) ($this->summary['ok'] ?? 0),
+                'overall_error_rows' => (int) ($this->summary['error'] ?? 0),
             ],
             filters: $this->filters
         );
