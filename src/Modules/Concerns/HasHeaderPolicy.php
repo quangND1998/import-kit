@@ -13,8 +13,6 @@ trait HasHeaderPolicy
         bool $strictOrder = false,
         array $strictCoreColumns = [],
         array $requiredHeaders = [],
-        ?int $customFieldStartColumn = null,
-        string $customFieldPattern = '/\|\s*(?<id>[A-Za-z0-9_-]+)\s*$/',
         string $normalizeMode = 'snake'
     ): HeaderPolicy {
         return new HeaderPolicy(
@@ -23,8 +21,6 @@ trait HasHeaderPolicy
             optionalHeaders: [],
             strictOrder: $strictOrder,
             strictCoreColumns: $strictCoreColumns,
-            customFieldStartColumn: $customFieldStartColumn,
-            customFieldPattern: $customFieldPattern,
             normalizeMode: $normalizeMode
         );
     }

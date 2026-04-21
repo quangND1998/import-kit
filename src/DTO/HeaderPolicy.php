@@ -19,17 +19,10 @@ final class HeaderPolicy
         public readonly array $optionalHeaders = [],
         public readonly bool $strictOrder = false,
         public readonly array $strictCoreColumns = [],
-        public readonly ?int $customFieldStartColumn = null,
-        public readonly string $customFieldPattern = '/\|\s*(?<id>[A-Za-z0-9_-]+)\s*$/',
-        /** @var 'snake'|'raw'|'snake_unaccent' */
         public readonly string $normalizeMode = 'snake'
     ) {
         if ($this->headerRowIndex < 1) {
             throw new InvalidArgumentException('headerRowIndex must be >= 1.');
-        }
-
-        if ($this->customFieldStartColumn !== null && $this->customFieldStartColumn < 1) {
-            throw new InvalidArgumentException('customFieldStartColumn must be >= 1 when provided.');
         }
     }
 }

@@ -62,7 +62,6 @@ final class SpreadsheetSourceReader implements SourceReaderInterface
         $highestRow = (int) $this->sheet->getHighestRow();
         $highestColumn = $this->sheet->getHighestColumn();
         $highestColumnIndex = Coordinate::columnIndexFromString($highestColumn);
-
         $located = $this->headerLocator->locate($this->sheet, $highestRow, $highestColumnIndex);
         $this->headerRow = max(1, (int) ($located['header_row'] ?? 1));
         $this->headerMap = (array) ($located['header_map'] ?? []);

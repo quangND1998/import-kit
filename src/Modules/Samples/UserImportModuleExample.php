@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Vendor\ImportKit\Modules\Samples;
 
-use Vendor\ImportKit\Contracts\CustomFieldCatalogAwareImportModuleInterface;
 use Vendor\ImportKit\Contracts\CommitDispatchAwareImportModuleInterface;
 use Vendor\ImportKit\Contracts\HeaderPolicyAwareImportModuleInterface;
 use Vendor\ImportKit\Contracts\TemplateErrorMessageAwareImportModuleInterface;
@@ -24,7 +23,6 @@ use Vendor\ImportKit\Modules\Concerns\HasHeaderPolicy;
 final class UserImportModuleExample implements
     \Vendor\ImportKit\Contracts\ImportModuleInterface,
     HeaderPolicyAwareImportModuleInterface,
-    CustomFieldCatalogAwareImportModuleInterface,
     CommitDispatchAwareImportModuleInterface,
     TemplateErrorMessageAwareImportModuleInterface
 {
@@ -68,16 +66,7 @@ final class UserImportModuleExample implements
                 2 => 'Ho va ten*',
             ],
             requiredHeaders: ['ma_dinh_danh_nhan_vien', 'ho_va_ten*'],
-            customFieldStartColumn: 26
         );
-    }
-
-    public function activeCustomFields(ImportRunContext $context): array
-    {
-        return [
-            new CustomFieldDefinition(id: '123', title: 'Thu nhap', dataType: 'NUMBER'),
-            new CustomFieldDefinition(id: '124', title: 'Ngay cap nhat', dataType: 'DATE'),
-        ];
     }
 
     public function commitDispatchOptions(ImportRunContext $context): array

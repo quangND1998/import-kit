@@ -34,7 +34,7 @@ final class RunImportJob implements ShouldQueue
     use SerializesModels;
 
     public $timeout = 120;
-    public $tries = 3;
+    public $tries = 1;
     
     public function __construct(
         public readonly string $jobId,
