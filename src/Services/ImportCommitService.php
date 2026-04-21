@@ -6,7 +6,6 @@ namespace Vendor\ImportKit\Services;
 
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Bus;
-use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Str;
@@ -71,25 +70,28 @@ final class ImportCommitService
 
         $job = $this->jobs->create($job);
 
-        $dispatchMode = $dispatchOverrides['dispatch_mode'] ?? (string) Config::get('import.commit.dispatch_mode', 'single');
+        $dispatchMode = $dispatchOverrides['dispatch_mode'] ?? (string) Config::get('import.commit.dispatch_mode', 'bus_batch');
         if ($dispatchMode === 'bus_batch') {
             $chunkSize = max(1, (int) ($dispatchOverrides['batch']['chunk_size'] ?? Config::get('import.commit.batch.chunk_size', 500)));
             $allowFailures = (bool) ($dispatchOverrides['batch']['allow_failures'] ?? Config::get('import.commit.batch.allow_failures', false));
             $precount = (bool) Config::get('import.commit.batch.precount_logical_rows', true);
 
+            $queueName = $dispatchOverrides['queue_name'] ?? null;
             if (!$precount) {
-                Queue::push(new RunImportJob(
+                $this->dispatchRunImportJob(new RunImportJob(
                     jobId: $job->id,
                     chunkOffset: 0,
                     chunkLimit: $chunkSize,
                     finalizeAfterRun: false,
                     cleanupSourceOnSuccess: false,
                     rethrowOnFailure: true,
-                    chainRemainingChunks: true
-                ));
+                    chainRemainingChunks: true,
+                    queueName: $queueName
+                ), $queueName);
                 $this->jobs->update($job->id, [
                     'summary' => [
                         'dispatch_mode' => 'bus_batch',
+                        'queue_name' => $queueName,
                         'chunk_size' => $chunkSize,
                         'allow_failures' => $allowFailures,
                         'precount_logical_rows' => false,
@@ -99,10 +101,11 @@ final class ImportCommitService
             } else {
                 $chunkCount = $this->countChunks($session, $context, $chunkSize);
                 if ($chunkCount <= 1) {
-                    Queue::push(new RunImportJob($job->id));
+                    $this->dispatchRunImportJob(new RunImportJob($job->id, queueName: $queueName), $queueName);
                     $this->jobs->update($job->id, [
                         'summary' => [
                             'dispatch_mode' => 'bus_batch',
+                            'queue_name' => $queueName,
                             'chunk_size' => $chunkSize,
                             'chunk_count' => 1,
                             'precount_logical_rows' => true,
@@ -119,14 +122,15 @@ final class ImportCommitService
                             finalizeAfterRun: false,
                             cleanupSourceOnSuccess: false,
                             rethrowOnFailure: true,
-                            chainRemainingChunks: false
+                            chainRemainingChunks: false,
+                            queueName: $queueName
                         );
                     }
 
-                    $batch = Bus::batch($chunkJobs)
+                    $pendingBatch = Bus::batch($chunkJobs)
                         ->allowFailures($allowFailures)
-                        ->then(static function () use ($job): void {
-                            Queue::push(new FinalizeImportJob($job->id));
+                        ->then(function () use ($job, $queueName): void {
+                            $this->dispatchFinalizeImportJob(new FinalizeImportJob($job->id), $queueName);
                         })
                         ->catch(static function (Throwable $throwable) use ($job): void {
                             $repo = Container::getInstance()->make(ImportJobRepositoryInterface::class);
@@ -154,12 +158,16 @@ final class ImportCommitService
                                 'summary' => ['message' => $throwable->getMessage()],
                                 'finished_at' => CarbonImmutable::now(),
                             ]);
-                        })
-                        ->dispatch();
+                        });
+                    if (is_string($queueName) && $queueName !== '') {
+                        $pendingBatch->onQueue($queueName);
+                    }
+                    $batch = $pendingBatch->dispatch();
 
                     $this->jobs->update($job->id, [
                         'summary' => [
                             'dispatch_mode' => 'bus_batch',
+                            'queue_name' => $queueName,
                             'batch_id' => $batch->id,
                             'chunk_size' => $chunkSize,
                             'allow_failures' => $allowFailures,
@@ -170,10 +178,12 @@ final class ImportCommitService
                 }
             }
         } else {
-            Queue::push(new RunImportJob($job->id));
+            $queueName = $dispatchOverrides['queue_name'] ?? null;
+            $this->dispatchRunImportJob(new RunImportJob($job->id, queueName: $queueName), $queueName);
             $this->jobs->update($job->id, [
                 'summary' => [
                     'dispatch_mode' => 'single',
+                    'queue_name' => $queueName,
                 ],
             ]);
         }
@@ -260,6 +270,7 @@ final class ImportCommitService
     /**
      * @return array{
      *   dispatch_mode?: 'single'|'bus_batch',
+     *   queue_name?: string,
      *   batch?: array{chunk_size?: int, allow_failures?: bool}
      * }
      */
@@ -278,6 +289,10 @@ final class ImportCommitService
         if (!in_array($dispatchMode, ['single', 'bus_batch'], true)) {
             $dispatchMode = null;
         }
+        $queueName = isset($options['queue_name']) ? trim((string) $options['queue_name']) : null;
+        if ($queueName === '') {
+            $queueName = null;
+        }
 
         $batch = is_array($options['batch'] ?? null) ? (array) $options['batch'] : [];
         $chunkSize = isset($batch['chunk_size']) ? max(1, (int) $batch['chunk_size']) : null;
@@ -286,6 +301,9 @@ final class ImportCommitService
         $normalized = [];
         if ($dispatchMode !== null) {
             $normalized['dispatch_mode'] = $dispatchMode;
+        }
+        if ($queueName !== null) {
+            $normalized['queue_name'] = $queueName;
         }
 
         if ($chunkSize !== null || $allowFailures !== null) {
@@ -296,6 +314,36 @@ final class ImportCommitService
         }
 
         return $normalized;
+    }
+
+    private function dispatchRunImportJob(RunImportJob $job, ?string $queueName): void
+    {
+        $pendingDispatch = RunImportJob::dispatch(
+            $job->jobId,
+            $job->chunkOffset,
+            $job->chunkLimit,
+            $job->finalizeAfterRun,
+            $job->cleanupSourceOnSuccess,
+            $job->rethrowOnFailure,
+            $job->chainRemainingChunks,
+            $job->queueName
+        );
+
+        if (is_string($queueName) && $queueName !== '') {
+            $pendingDispatch->onQueue($queueName);
+        }
+    }
+
+    private function dispatchFinalizeImportJob(FinalizeImportJob $job, ?string $queueName): void
+    {
+        $pendingDispatch = FinalizeImportJob::dispatch(
+            $job->jobId,
+            $job->cleanupSourceOnSuccess
+        );
+
+        if (is_string($queueName) && $queueName !== '') {
+            $pendingDispatch->onQueue($queueName);
+        }
     }
 
     private function ensureSubmitStorage(PreviewSessionData $session, ?ImportRunContext $runContext): PreviewSessionData

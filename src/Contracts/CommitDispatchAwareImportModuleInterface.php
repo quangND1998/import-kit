@@ -13,6 +13,7 @@ interface CommitDispatchAwareImportModuleInterface
      *
      * @return array{
      *   dispatch_mode?: 'single'|'bus_batch',
+     *   queue_name?: string,
      *   batch?: array{
      *     chunk_size?: int,
      *     allow_failures?: bool

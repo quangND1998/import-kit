@@ -14,9 +14,10 @@ use Illuminate\Support\Facades\Storage;
 use Throwable;
 use Vendor\ImportKit\Contracts\ImportJobRepositoryInterface;
 use Vendor\ImportKit\Contracts\PreviewSessionStoreInterface;
-
+use Illuminate\Foundation\Bus\Dispatchable;
 final class FinalizeImportJob implements ShouldQueue
 {
+    use Dispatchable;
     use InteractsWithQueue;
     use Queueable;
     use SerializesModels;

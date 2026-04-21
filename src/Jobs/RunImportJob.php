@@ -9,7 +9,6 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Config;
-use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Carbon\CarbonImmutable;
 use Throwable;
@@ -26,9 +25,11 @@ use Vendor\ImportKit\Pipeline\ImportPipeline;
 use Vendor\ImportKit\Support\ImportKitTranslator;
 use Vendor\ImportKit\Support\ImportMode;
 use Vendor\ImportKit\DTO\CommitResult;
+use Illuminate\Foundation\Bus\Dispatchable;
 
 final class RunImportJob implements ShouldQueue
 {
+    use Dispatchable;
     use InteractsWithQueue;
     use Queueable;
     use SerializesModels;
@@ -43,7 +44,8 @@ final class RunImportJob implements ShouldQueue
         public readonly bool $finalizeAfterRun = true,
         public readonly bool $cleanupSourceOnSuccess = true,
         public readonly bool $rethrowOnFailure = false,
-        public readonly bool $chainRemainingChunks = false
+        public readonly bool $chainRemainingChunks = false,
+        public readonly ?string $queueName = null
     ) {
     }
 
@@ -145,25 +147,26 @@ final class RunImportJob implements ShouldQueue
                 && $this->chunkOffset !== null && $this->chunkLimit !== null) {
                 $seen = (int) ($result->summary['total_seen'] ?? 0);
                 if ($seen === 0) {
-                    Queue::push(new FinalizeImportJob($this->jobId, $this->cleanupSourceOnSuccess));
+                    $this->dispatchFinalizeImportJob($this->cleanupSourceOnSuccess);
 
                     return;
                 }
                 if ($seen >= $this->chunkLimit) {
-                    Queue::push(new self(
+                    $this->dispatchNextChunk(new self(
                         jobId: $this->jobId,
                         chunkOffset: $this->chunkOffset + $this->chunkLimit,
                         chunkLimit: $this->chunkLimit,
                         finalizeAfterRun: false,
                         cleanupSourceOnSuccess: false,
                         rethrowOnFailure: $this->rethrowOnFailure,
-                        chainRemainingChunks: true
+                        chainRemainingChunks: true,
+                        queueName: $this->queueName
                     ));
 
                     return;
                 }
 
-                Queue::push(new FinalizeImportJob($this->jobId, $this->cleanupSourceOnSuccess));
+                $this->dispatchFinalizeImportJob($this->cleanupSourceOnSuccess);
 
                 return;
             }
@@ -250,6 +253,32 @@ final class RunImportJob implements ShouldQueue
             Storage::disk($disk)->delete($fileHandle);
         } catch (Throwable) {
             // Best-effort cleanup. Import result has already been committed.
+        }
+    }
+
+    private function dispatchNextChunk(self $job): void
+    {
+        $pendingDispatch = self::dispatch(
+            $job->jobId,
+            $job->chunkOffset,
+            $job->chunkLimit,
+            $job->finalizeAfterRun,
+            $job->cleanupSourceOnSuccess,
+            $job->rethrowOnFailure,
+            $job->chainRemainingChunks,
+            $job->queueName
+        );
+
+        if (is_string($this->queueName) && $this->queueName !== '') {
+            $pendingDispatch->onQueue($this->queueName);
+        }
+    }
+
+    private function dispatchFinalizeImportJob(bool $cleanupSourceOnSuccess): void
+    {
+        $pendingDispatch = FinalizeImportJob::dispatch($this->jobId, $cleanupSourceOnSuccess);
+        if (is_string($this->queueName) && $this->queueName !== '') {
+            $pendingDispatch->onQueue($this->queueName);
         }
     }
 }
