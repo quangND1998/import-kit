@@ -199,6 +199,7 @@ final class MongoImportJobRepository implements ImportJobRepositoryInterface
                 'overall_ok_rows' => isset($job['ok_rows']) ? (int) $job['ok_rows'] : null,
                 'overall_error_rows' => isset($job['error_rows']) ? (int) $job['error_rows'] : null,
                 'skipped' => isset($job['skipped_blank_rows']) ? (int) $job['skipped_blank_rows'] : 0,
+                'status' => isset($job['status']) ? (string) $job['status'] : null,
             ],
             'pagination' => [
                 'page' => $window->page(),

@@ -49,10 +49,12 @@ final class ImportResponseFormatter
         $idKey = $mode === 'result' ? 'import_job_id' : 'import_session_id';
         $sourceDefault = $mode === 'result' ? 'job_result' : 'session';
         $validatedDefault = $mode === 'result';
+        $jobStatus = $mode === 'result' ? ($meta['status'] ?? null) : null;
 
         return [
             'mode' => $mode,
             $idKey => $id,
+            'status' => is_string($jobStatus) && $jobStatus !== '' ? $jobStatus : null,
             'validated' => (bool) ($meta['validated'] ?? $validatedDefault),
             'data_source' => (string) ($meta['source'] ?? $sourceDefault),
             'page' => (int) ($pagination['page'] ?? 1),
@@ -72,6 +74,7 @@ final class ImportResponseFormatter
                 'overall_total_rows' => $totalRows,
                 'overall_ok_rows' => $overallOkCount,
                 'overall_error_rows' => $overallErrorCount,
+                'status' => is_string($jobStatus) && $jobStatus !== '' ? $jobStatus : null,
             ],
             'pagination' => $pagination,
             'filters' => $filters,

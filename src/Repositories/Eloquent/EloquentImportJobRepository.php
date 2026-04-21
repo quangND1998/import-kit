@@ -194,6 +194,7 @@ final class EloquentImportJobRepository implements ImportJobRepositoryInterface
                 'overall_ok_rows' => $job instanceof ImportJob ? (int) $job->ok_rows : null,
                 'overall_error_rows' => $job instanceof ImportJob ? (int) $job->error_rows : null,
                 'skipped' => $job instanceof ImportJob ? (int) $job->skipped_blank_rows : 0,
+                'status' => $job instanceof ImportJob ? (string) $job->status : null,
             ],
             'pagination' => [
                 'page' => $window->page(),
