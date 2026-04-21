@@ -39,6 +39,7 @@ final class ImportPipeline
         int $lineOffset = 0
     ) {
         $context = $runContext ?? ImportRunContext::from(null, null, []);
+        $module->setImportRunContext($context);
         $parser = $module->makeRowParser();
         $validator = $module->makeRowValidator();
         $mapper = $module->makeRowMapper();
