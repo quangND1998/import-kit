@@ -18,7 +18,7 @@ use Vendor\ImportKit\DTO\ValidationResult;
 use Vendor\ImportKit\Modules\Concerns\HasHeaderPolicy;
 use Vendor\ImportKit\DTO\CustomFieldDefinition;
 use Vendor\ImportKit\Support\HeaderLabelNormalization;
-
+use Vendor\ImportKit\Modules\Concerns\HasImportRunContext;
 /**
  * Matches the sample employee spreadsheet: header row 6, columns A–E.
  * For local/smoke testing only; copy or extend in the host application.
@@ -29,7 +29,7 @@ final class EmployeeImportTestModule implements
     TemplateErrorMessageAwareImportModuleInterface
 {
     use HasHeaderPolicy;
-
+    use HasImportRunContext;
     public const KIND = 'employee_import_test';
     private array $customFields;
     public function __construct()

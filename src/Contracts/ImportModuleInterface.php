@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Vendor\ImportKit\Contracts;
 
+use Vendor\ImportKit\DTO\ImportRunContext;
+
 interface ImportModuleInterface
 {
     public function kind(): string;
@@ -30,4 +32,6 @@ interface ImportModuleInterface
     public function makeRowMapper(): RowMapperInterface;
 
     public function makeRowCommitter(): RowCommitterInterface;
+
+    public function setImportRunContext(ImportRunContext $context): void;
 }
