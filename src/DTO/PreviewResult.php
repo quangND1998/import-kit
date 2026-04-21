@@ -22,7 +22,8 @@ final class PreviewResult
         public readonly array $rows,
         public readonly array $columnLabels = [],
         public readonly bool $validated = true,
-        public readonly string $dataSource = 'file'
+        public readonly string $dataSource = 'file',
+        public readonly array $filters = ['status' => 'all']
     ) {
     }
 
@@ -50,7 +51,7 @@ final class PreviewResult
                 'source' => $this->dataSource,
                 'skipped' => (int) ($this->summary['skipped_blank'] ?? 0),
             ],
-            filters: ['status' => 'all']
+            filters: $this->filters
         );
     }
 }

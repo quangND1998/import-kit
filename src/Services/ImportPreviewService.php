@@ -40,7 +40,8 @@ final class ImportPreviewService
         ?ImportRunContext $runContext = null,
         ?SourceReaderInterface $reader = null,
         ?RowWindow $rowWindow = null,
-        bool $validate = true
+        bool $validate = true,
+        ?string $status = null
     ): PreviewResult {
         $requestedSessionId = trim($sessionId);
         $session = $requestedSessionId !== '' ? $this->sessions->find($requestedSessionId) : null;
@@ -110,7 +111,8 @@ final class ImportPreviewService
             rows: $result->rows,
             columnLabels: $this->columnLabelService->labelsFor($module),
             validated: $validate,
-            dataSource: 'file'
+            dataSource: 'file',
+            filters: ['status' => 'all']
         );
 
         $this->sessions->savePreviewSnapshot(
@@ -123,7 +125,55 @@ final class ImportPreviewService
             ]
         );
 
-        return $decorated;
+        $resolvedStatus = $this->normalizeStatus($status);
+        if ($resolvedStatus === null) {
+            return $decorated;
+        }
+
+        $filteredRows = array_values(array_filter(
+            $decorated->rows,
+            static fn ($row): bool => $row->status === $resolvedStatus
+        ));
+
+        $filteredSummary = $decorated->summary;
+        $filteredSummary['total_seen'] = count($filteredRows);
+        $filteredSummary['valid'] = count(array_filter(
+            $filteredRows,
+            static fn ($row): bool => $row->status === 'ok'
+        ));
+        $filteredSummary['invalid'] = count(array_filter(
+            $filteredRows,
+            static fn ($row): bool => $row->status === 'error'
+        ));
+
+        $filteredPagination = $decorated->pagination;
+        $filteredPagination['filtered_total'] = count($filteredRows);
+
+        return new PreviewResult(
+            sessionId: $decorated->sessionId,
+            kind: $decorated->kind,
+            summary: $filteredSummary,
+            pagination: $filteredPagination,
+            rows: $filteredRows,
+            columnLabels: $decorated->columnLabels,
+            validated: $decorated->validated,
+            dataSource: $decorated->dataSource,
+            filters: ['status' => $resolvedStatus]
+        );
+    }
+
+    private function normalizeStatus(?string $status): ?string
+    {
+        if ($status === null) {
+            return null;
+        }
+
+        $normalized = strtolower(trim($status));
+        if ($normalized === '' || $normalized === 'all') {
+            return null;
+        }
+
+        return $normalized;
     }
 
     private function storedFileFromSession(PreviewSessionData $session): StoredFile
