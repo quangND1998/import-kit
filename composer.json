@@ -9,6 +9,8 @@
         "illuminate/database": "^8.0 || ^9.0 || ^10.0 || ^11.0 || ^12.0",
         "illuminate/queue": "^8.0 || ^9.0 || ^10.0 || ^11.0 || ^12.0",
         "illuminate/filesystem": "^8.0 || ^9.0 || ^10.0 || ^11.0 || ^12.0",
+        "illuminate/http": "^8.0 || ^9.0 || ^10.0 || ^11.0 || ^12.0",
+        "illuminate/routing": "^8.0 || ^9.0 || ^10.0 || ^11.0 || ^12.0",
         "phpoffice/phpspreadsheet": "^1.23 || ^2.0 || ^3.0 || ^4.0 || ^5.0"
     },
     "autoload": {
@@ -20,6 +22,13 @@
         "psr-4": {
             "Vendor\\ImportKit\\Tests\\": "tests/"
         }
+    },
+    "require-dev": {
+        "orchestra/testbench": "^10.10",
+        "phpunit/phpunit": "^11.5.3"
+    },
+    "scripts": {
+        "test": "phpunit"
     },
     "extra": {
         "laravel": {

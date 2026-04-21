@@ -45,7 +45,14 @@ final class FakeSourceReader implements SourceReaderInterface
 
     public function rows(?RowWindow $window = null): iterable
     {
-        yield from $this->rows;
+        if ($window === null) {
+            yield from $this->rows;
+
+            return;
+        }
+
+        $slice = array_slice($this->rows, $window->offset, $window->limit);
+        yield from $slice;
     }
 
     public function close(): void

@@ -5,6 +5,30 @@ declare(strict_types=1);
 return [
     /*
     |--------------------------------------------------------------------------
+    | Test routes (employee import smoke test)
+    |--------------------------------------------------------------------------
+    |
+    | When enabled, registers HTTP routes under /import-kit/test/* and the
+    | sample employee_import_test module. Disable in production.
+    |
+    */
+    'enable_test_routes' => (bool) env('IMPORT_ENABLE_TEST_ROUTES', false),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Optional local fixture path (GET preview-fixture)
+    |--------------------------------------------------------------------------
+    |
+    | Absolute path to an .xlsx file on the server (e.g. your Downloads file).
+    | Only used when enable_test_routes is true.
+    |
+    */
+    'test' => [
+        'employee_fixture_absolute_path' => env('IMPORT_TEST_EMPLOYEE_FIXTURE_PATH', ''),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Persistence Driver
     |--------------------------------------------------------------------------
     |
@@ -136,7 +160,7 @@ return [
     |
     */
     'commit' => [
-        'dispatch_mode' => env('IMPORT_COMMIT_DISPATCH_MODE', 'single'),
+        'dispatch_mode' => env('IMPORT_COMMIT_DISPATCH_MODE', 'bus_batch'),
         'batch' => [
             'chunk_size' => (int) env('IMPORT_COMMIT_BATCH_CHUNK_SIZE', 500),
             'allow_failures' => (bool) env('IMPORT_COMMIT_BATCH_ALLOW_FAILURES', false),

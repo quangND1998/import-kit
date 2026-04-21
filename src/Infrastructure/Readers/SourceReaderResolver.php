@@ -5,15 +5,12 @@ declare(strict_types=1);
 namespace Vendor\ImportKit\Infrastructure\Readers;
 
 use InvalidArgumentException;
-use Vendor\ImportKit\Contracts\CustomFieldCatalogAwareImportModuleInterface;
-use Vendor\ImportKit\Contracts\CustomFieldCatalogInterface;
 use Vendor\ImportKit\Contracts\HeaderLocatorRegistryInterface;
 use Vendor\ImportKit\Contracts\HeaderPolicyAwareImportModuleInterface;
 use Vendor\ImportKit\Contracts\HeaderPolicyResolverInterface;
 use Vendor\ImportKit\Contracts\ImportModuleInterface;
 use Vendor\ImportKit\Contracts\SourceReaderInterface;
 use Vendor\ImportKit\Contracts\SourceReaderResolverInterface;
-use Vendor\ImportKit\DTO\CustomFieldDefinition;
 use Vendor\ImportKit\DTO\HeaderPolicy;
 use Vendor\ImportKit\DTO\ImportRunContext;
 use Vendor\ImportKit\DTO\StoredFile;
@@ -23,7 +20,6 @@ final class SourceReaderResolver implements SourceReaderResolverInterface
     public function __construct(
         private readonly HeaderLocatorRegistryInterface $headerLocatorRegistry,
         private readonly HeaderPolicyResolverInterface $headerPolicyResolver,
-        private readonly CustomFieldCatalogInterface $customFieldCatalog
     ) {
     }
 
@@ -44,14 +40,10 @@ final class SourceReaderResolver implements SourceReaderResolverInterface
             $locator = $this->headerLocatorRegistry->resolve($kind);
             if ($locator instanceof DefaultHeaderLocator) {
                 $policy = $this->resolveHeaderPolicy($kind, $module, $resolvedContext);
-                $customFields = $this->resolveCustomFields($kind, $module, $resolvedContext);
                 $locator = new ConfigurableHeaderLocator(
                     policyResolver: $this->headerPolicyResolver,
-                    customFieldCatalog: $this->customFieldCatalog,
                     kind: $kind,
-                    context: $resolvedContext,
-                    policyOverride: $policy,
-                    customFieldsOverride: $customFields
+                    policyOverride: $policy
                 );
             }
 
@@ -81,20 +73,5 @@ final class SourceReaderResolver implements SourceReaderResolverInterface
         }
 
         return $this->headerPolicyResolver->resolve($kind);
-    }
-
-    /**
-     * @return array<int, CustomFieldDefinition>
-     */
-    private function resolveCustomFields(
-        ?string $kind,
-        ?ImportModuleInterface $module,
-        ImportRunContext $context
-    ): array {
-        if ($module instanceof CustomFieldCatalogAwareImportModuleInterface) {
-            return $module->activeCustomFields($context);
-        }
-
-        return $this->customFieldCatalog->activeFields((string) $kind, $context);
     }
 }

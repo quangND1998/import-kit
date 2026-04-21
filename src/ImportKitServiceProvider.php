@@ -12,9 +12,7 @@ use Vendor\ImportKit\Contracts\HeaderPolicyResolverInterface;
 use Vendor\ImportKit\Contracts\HeaderLocatorInterface;
 use Vendor\ImportKit\Contracts\HeaderLocatorRegistryInterface;
 use Vendor\ImportKit\Contracts\ImportRegistryInterface;
-use Vendor\ImportKit\Contracts\CustomFieldCatalogInterface;
 use Vendor\ImportKit\Contracts\SourceReaderResolverInterface;
-use Vendor\ImportKit\Infrastructure\CustomField\NullCustomFieldCatalog;
 use Vendor\ImportKit\Infrastructure\Readers\ConfigHeaderPolicyResolver;
 use Vendor\ImportKit\Infrastructure\Readers\DefaultHeaderLocator;
 use Vendor\ImportKit\Infrastructure\Readers\HeaderLocatorRegistry;
@@ -36,6 +34,7 @@ use Vendor\ImportKit\Services\ImportJobStatusService;
 use Vendor\ImportKit\Services\ImportPreviewService;
 use Vendor\ImportKit\Services\ImportResponseFormatter;
 use Vendor\ImportKit\Console\PruneExpiredImportPreviewSessionsCommand;
+use Vendor\ImportKit\Modules\Samples\EmployeeImportTestModule;
 
 final class ImportKitServiceProvider extends ServiceProvider
 {
@@ -54,7 +53,6 @@ final class ImportKitServiceProvider extends ServiceProvider
         });
         $this->app->singleton(SourceReaderResolverInterface::class, SourceReaderResolver::class);
         $this->app->singleton(HeaderPolicyResolverInterface::class, ConfigHeaderPolicyResolver::class);
-        $this->app->singleton(CustomFieldCatalogInterface::class, NullCustomFieldCatalog::class);
         $this->app->singleton(ImportPipeline::class);
         $this->app->singleton(ColumnLabelService::class);
         $this->app->singleton(ImportRegistryInterface::class, function (): ImportRegistryInterface {
@@ -114,6 +112,22 @@ final class ImportKitServiceProvider extends ServiceProvider
             $this->commands([
                 PruneExpiredImportPreviewSessionsCommand::class,
             ]);
+        }
+
+        $langVendorTarget = is_dir($this->app->basePath('lang'))
+            ? $this->app->basePath('lang/vendor/import_kit')
+            : resource_path('lang/vendor/import_kit');
+        $this->publishes([
+            __DIR__ . '/../lang' => $langVendorTarget,
+        ], 'import-kit-lang');
+
+        if ((bool) config('import.enable_test_routes', false)) {
+            $this->loadRoutesFrom(__DIR__ . '/../routes/test-import.php');
+            $this->app->booted(static function ($app): void {
+                /** @var ImportRegistryInterface $registry */
+                $registry = $app->make(ImportRegistryInterface::class);
+                $registry->register(new EmployeeImportTestModule());
+            });
         }
     }
 }
